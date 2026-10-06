@@ -1,5 +1,6 @@
 package com.neo.test.fragment
 
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -21,6 +22,10 @@ class ReadChildrenFragment : Fragment(R.layout.fragment_read_children) {
         _binding = FragmentReadChildrenBinding.bind(view)
 
         binding.recyclerView.adapter = TestAdapter()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            binding.downloadButton.stateDescription = "Loading"
+        }
     }
 
     override fun onDestroyView() {

@@ -77,8 +77,9 @@ class Reader @Inject constructor(
                     read(
                         node = child,
                         options = Options(
-                            // Announce state only checkable children
-                            mustReadState = type is Type.Checkable,
+                            // Announce explicit state descriptions and checkable fallbacks.
+                            mustReadState = child.stateDescription.isNotNullOrEmpty() ||
+                                    type is Type.Checkable,
                             // Should not announce the type image of children
                             mustReadType = type !is Type.Image
                         )

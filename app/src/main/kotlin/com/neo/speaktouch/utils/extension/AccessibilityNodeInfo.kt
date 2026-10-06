@@ -88,16 +88,16 @@ fun AccessibilityNodeInfoCompat.toStateText(
     type: Type? = Type.get(this)
 ): Text? {
 
+    if (stateDescription.isNotNullOrEmpty()) {
+        return Text(stateDescription.toString())
+    }
+
     if (type is Type.Checkable) {
         return toCheckableStateText(type)
     }
 
     // The selection state has a deliberately different behavior from talkback.
     // Discussion at: https://github.com/NeoA11y/SpeakTouch/discussions/115
-
-    if (isSelected && stateDescription.isNotNullOrEmpty()) {
-        return Text(stateDescription.toString())
-    }
 
     if (isSelected) {
         return Text(R.string.text_selected)
