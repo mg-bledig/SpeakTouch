@@ -38,7 +38,7 @@ object NodeValidator {
      */
     fun hasInteraction(node: AccessibilityNodeInfoCompat): Boolean {
 
-        return isClickable(node) || node.isFocusable
+        return isClickable(node) || node.isFocusable || node.isScreenReaderFocusable
     }
 
     /**
