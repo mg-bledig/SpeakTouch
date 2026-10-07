@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.RecyclerView
 import com.neo.test.R
@@ -21,6 +22,8 @@ class ReadChildrenFragment : Fragment(R.layout.fragment_read_children) {
         _binding = FragmentReadChildrenBinding.bind(view)
 
         binding.recyclerView.adapter = TestAdapter()
+
+        ViewCompat.setScreenReaderFocusable(binding.screenReaderFocusGroup, true)
     }
 
     override fun onDestroyView() {
