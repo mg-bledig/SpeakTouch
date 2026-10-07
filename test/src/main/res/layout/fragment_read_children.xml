@@ -99,6 +99,16 @@
         android:focusable="true"
         android:text="Download" />
 
+    <!-- Issue #88: an unlabeled interactive leaf between the #112 and #120 controls. -->
+    <ImageButton
+        android:id="@+id/unlabeled_image_button"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:importantForAccessibility="yes"
+        android:clickable="true"
+        android:focusable="true"
+        android:src="@android:drawable/ic_menu_camera" />
+
     <!-- Issue #120: a screen-reader focus group without input focus or clicks. -->
     <LinearLayout
         android:id="@+id/screen_reader_focus_group"

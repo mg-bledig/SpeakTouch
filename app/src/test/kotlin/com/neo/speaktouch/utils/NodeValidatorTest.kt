@@ -117,7 +117,7 @@ class NodeValidatorTest {
     }
 
     @Test
-    fun `interaction without content or children does not require focus`() {
+    fun `interaction without content or children requires focus without becoming readable`() {
         for (interaction in listOf("click", "longClick", "focus")) {
             val node = node().apply {
                 isClickable = interaction == "click"
@@ -127,7 +127,9 @@ class NodeValidatorTest {
             assertTrue(NodeValidator.hasInteraction(node))
             assertFalse(NodeValidator.mustReadContent(node))
             assertFalse(NodeValidator.mustReadChildren(node))
-            assertFalse(NodeValidator.mustFocus(node))
+            assertFalse(NodeValidator.hasReadableContent(node))
+            assertTrue(NodeValidator.mustFocus(node))
+            assertTrue(NodeFilter.Focusable.filter(node.unwrap()))
         }
     }
 
@@ -244,13 +246,14 @@ class NodeValidatorTest {
     }
 
     @Test
-    fun `state description alone does not grant readability or focus eligibility`() {
+    fun `interactive state-only leaf gains focus without gaining readability`() {
         val child = node().apply { stateDescription = "Loading"; isClickable = true }
         assertFalse(NodeValidator.hasTextToRead(child))
         assertFalse(NodeValidator.hasReadableContent(child))
         assertFalse(NodeValidator.isReadableAsChild(child))
-        assertFalse(NodeValidator.mustFocus(child))
-        assertFalse(NodeFilter.Focusable.filter(child.unwrap()))
+        assertTrue(NodeValidator.mustFocus(child))
+        assertTrue(NodeFilter.Focusable.filter(child.unwrap()))
+        assertEquals("Loading", Reader(RuntimeEnvironment.getApplication()).read(child))
         val parent = node().apply { isClickable = true }
         addChild(parent, child)
         assertFalse(NodeValidator.hasReadableChild(parent))

@@ -61,7 +61,13 @@ object NodeValidator {
 
         if (!node.isVisibleToUser) return false
 
-        return mustReadContent(node) || mustReadChildren(node)
+        return mustReadContent(node) ||
+                mustReadChildren(node) ||
+                (
+                    node.childCount == 0 &&
+                    node.collectionInfo == null &&
+                    (isClickable(node) || node.isFocusable)
+                )
     }
 
     /**
