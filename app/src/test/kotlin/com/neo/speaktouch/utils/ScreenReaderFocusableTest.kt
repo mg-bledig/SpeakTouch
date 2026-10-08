@@ -83,7 +83,7 @@ class ScreenReaderFocusableTest {
     }
 
     @Test
-    fun `own text or description keeps existing content precedence over children`() {
+    fun `own text or description precedes grouped children`() {
         for (description in listOf(false, true)) {
             val parent = node(marked = true).apply {
                 if (description) contentDescription = "Group label" else text = "Group label"
@@ -91,7 +91,7 @@ class ScreenReaderFocusableTest {
             addChild(parent, node("Child label"))
             assertTrue(NodeValidator.mustReadContent(parent))
             assertFalse(NodeValidator.mustReadChildren(parent))
-            assertEquals("Group label", read(parent))
+            assertEquals("Group label, Child label", read(parent))
         }
     }
 

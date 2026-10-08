@@ -35,11 +35,35 @@ class Reader @Inject constructor(
     fun read(
         node: AccessibilityNodeInfoCompat,
         options: Options = Options()
-    ) = with(node) {
+    ) = read(node, options, grouped = false, ancestorLabels = emptyList())
+
+    private fun read(
+        node: AccessibilityNodeInfoCompat,
+        options: Options,
+        grouped: Boolean,
+        ancestorLabels: List<CharSequence>
+    ): String = with(node) {
 
         val type = Type.get(node)
 
-        val content = getContent(type) ?: readChildren(node)
+        val ownContent = getContent(type)
+        val composeGroup = (grouped || isScreenReaderFocusable) &&
+                !isEditable && !isCheckable && type !is Type.Checkable &&
+                type !is Type.EditField && type !is Type.Slider &&
+                !NodeValidator.isExplorableCollection(node)
+        val content = if (composeGroup) {
+            buildList {
+                if (ownContent != null && ownContent.isNotEmpty() &&
+                    ancestorLabels.none { containsLabel(it, ownContent) }) {
+                    add(ownContent)
+                }
+                val labels = ancestorLabels + listOfNotNull(ownContent)
+                val children = readGroupedChildren(node, labels)
+                if (children.isNotEmpty()) add(children)
+            }.joinToString(", ")
+        } else {
+            ownContent ?: readChildren(node)
+        }
 
         buildList {
 
@@ -61,6 +85,34 @@ class Reader @Inject constructor(
         }.joinToString(
             separator = ", "
         )
+    }
+
+    private fun readGroupedChildren(
+        node: AccessibilityNodeInfoCompat,
+        ancestorLabels: List<CharSequence>
+    ): String = buildList {
+        for (child in node) {
+            val type = Type.get(child)
+            if (!child.isVisibleToUser || child.isEditable || child.isCheckable ||
+                type is Type.EditField || type is Type.Checkable || type is Type.Slider ||
+                NodeValidator.isExplorableCollection(child) ||
+                !NodeValidator.isReadableAsChild(child)) continue
+
+            val speech = read(child, Options(
+                mustReadState = child.stateDescription.isNotNullOrEmpty(),
+                mustReadType = type !is Type.Image
+            ), grouped = true, ancestorLabels = ancestorLabels)
+            if (speech.isNotEmpty()) add(speech)
+        }
+    }.joinToString(", ")
+
+    // Compare labels only, never rendered role/state speech or earlier siblings.
+    private fun containsLabel(parent: CharSequence, child: CharSequence): Boolean {
+        fun normalize(value: CharSequence) = value.toString().trim().replace(Regex("\\s+"), " ")
+        val label = normalize(child)
+        if (label.isEmpty()) return false
+        return Regex("(?<![\\p{L}\\p{N}_])${Regex.escape(label)}(?![\\p{L}\\p{N}_])")
+            .containsMatchIn(normalize(parent))
     }
 
     fun readChildren(

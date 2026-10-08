@@ -40,6 +40,7 @@ rootProject.name = "SpeakTouch"
 
 include("app")
 include("test")
+include("test-compose")
 
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version("0.9.0")
