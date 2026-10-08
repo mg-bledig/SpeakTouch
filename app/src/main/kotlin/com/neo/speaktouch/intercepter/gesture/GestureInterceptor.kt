@@ -24,18 +24,24 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.ServiceController
+import com.neo.speaktouch.controller.SliderController
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
 
 @ServiceScoped
 class GestureInterceptor @Inject constructor(
     private val focusController: FocusController,
-    private val serviceController: ServiceController
+    private val serviceController: ServiceController,
+    private val sliderController: SliderController
 ) {
 
     fun handle(gestureId: Int): Boolean {
 
         when (gestureId) {
+            AccessibilityService.GESTURE_SWIPE_UP -> return sliderController.adjust(increase = true)
+
+            AccessibilityService.GESTURE_SWIPE_DOWN -> return sliderController.adjust(increase = false)
+
             AccessibilityService.GESTURE_SWIPE_LEFT -> {
                 focusController.moveFocusToPrevious()
 
