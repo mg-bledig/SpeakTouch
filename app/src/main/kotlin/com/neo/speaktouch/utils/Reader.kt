@@ -22,6 +22,7 @@ import android.content.Context
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.model.Type
 import com.neo.speaktouch.model.toTypeText
+import com.neo.speaktouch.utils.extension.getAssociatedLabels
 import com.neo.speaktouch.utils.extension.getContent
 import com.neo.speaktouch.utils.extension.isNotNullOrEmpty
 import com.neo.speaktouch.utils.extension.iterator
@@ -41,12 +42,15 @@ class Reader @Inject constructor(
         node: AccessibilityNodeInfoCompat,
         options: Options,
         grouped: Boolean,
-        ancestorLabels: List<CharSequence>
+        ancestorLabels: List<CharSequence>,
+        spokenContent: MutableList<CharSequence>? = null
     ): String = with(node) {
 
         val type = Type.get(node)
 
         val ownContent = getContent(type)
+        // Keep content separate from rendered roles/states for associated-label comparison.
+        val contentLabels = mutableListOf<CharSequence>()
         val composeGroup = (grouped || isScreenReaderFocusable) &&
                 !isEditable && !isCheckable && type !is Type.Checkable &&
                 type !is Type.EditField && type !is Type.Slider &&
@@ -56,16 +60,23 @@ class Reader @Inject constructor(
                 if (ownContent != null && ownContent.isNotEmpty() &&
                     ancestorLabels.none { containsLabel(it, ownContent) }) {
                     add(ownContent)
+                    contentLabels.add(ownContent)
                 }
                 val labels = ancestorLabels + listOfNotNull(ownContent)
-                val children = readGroupedChildren(node, labels)
+                val children = readGroupedChildren(node, labels, contentLabels)
                 if (children.isNotEmpty()) add(children)
             }.joinToString(", ")
         } else {
-            ownContent ?: readChildren(node)
+            ownContent?.also { contentLabels.add(it) } ?: readChildren(node, contentLabels)
         }
 
+        val associatedLabels = associatedLabelContent(node, node.getAssociatedLabels(), contentLabels)
+        spokenContent?.addAll(associatedLabels)
+        spokenContent?.addAll(contentLabels)
+
         buildList {
+
+            addAll(associatedLabels)
 
             if (content.isNotNullOrEmpty()) {
                 add(content)
@@ -89,7 +100,8 @@ class Reader @Inject constructor(
 
     private fun readGroupedChildren(
         node: AccessibilityNodeInfoCompat,
-        ancestorLabels: List<CharSequence>
+        ancestorLabels: List<CharSequence>,
+        spokenContent: MutableList<CharSequence>
     ): String = buildList {
         for (child in node) {
             val type = Type.get(child)
@@ -101,22 +113,45 @@ class Reader @Inject constructor(
             val speech = read(child, Options(
                 mustReadState = child.stateDescription.isNotNullOrEmpty(),
                 mustReadType = type !is Type.Image
-            ), grouped = true, ancestorLabels = ancestorLabels)
+            ), grouped = true, ancestorLabels = ancestorLabels, spokenContent = spokenContent)
             if (speech.isNotEmpty()) add(speech)
         }
     }.joinToString(", ")
 
+    // A separate composition step also permits list-policy tests on pre-36 test runtimes.
+    internal fun associatedLabelContent(
+        node: AccessibilityNodeInfoCompat,
+        labelNodes: List<AccessibilityNodeInfoCompat?>,
+        spokenContent: List<CharSequence>
+    ): List<CharSequence> = buildList {
+        val seen = mutableSetOf<String>()
+        for (labelNode in labelNodes) {
+            if (labelNode == null || labelNode == node || !labelNode.isVisibleToUser) continue
+            val label = labelNode.getContent() ?: continue
+            val normalized = normalizeLabel(label)
+            if (normalized.isEmpty() || !seen.add(normalized)) continue
+            if (spokenContent.none { containsLabel(it, label) }) add(label)
+        }
+    }
+
+    private fun normalizeLabel(value: CharSequence) =
+        value.toString().trim().replace(Regex("[\\s\\p{Z}]+"), " ")
+
     // Compare labels only, never rendered role/state speech or earlier siblings.
     private fun containsLabel(parent: CharSequence, child: CharSequence): Boolean {
-        fun normalize(value: CharSequence) = value.toString().trim().replace(Regex("\\s+"), " ")
-        val label = normalize(child)
+        val label = normalizeLabel(child)
         if (label.isEmpty()) return false
         return Regex("(?<![\\p{L}\\p{N}_])${Regex.escape(label)}(?![\\p{L}\\p{N}_])")
-            .containsMatchIn(normalize(parent))
+            .containsMatchIn(normalizeLabel(parent))
     }
 
     fun readChildren(
         node: AccessibilityNodeInfoCompat
+    ): CharSequence = readChildren(node, spokenContent = null)
+
+    private fun readChildren(
+        node: AccessibilityNodeInfoCompat,
+        spokenContent: MutableList<CharSequence>?
     ): CharSequence {
         return buildList {
             for (child in node) {
@@ -134,7 +169,10 @@ class Reader @Inject constructor(
                                     type is Type.Checkable || type is Type.Slider,
                             // Should not announce the type image of children
                             mustReadType = type !is Type.Image
-                        )
+                        ),
+                        grouped = false,
+                        ancestorLabels = emptyList(),
+                        spokenContent = spokenContent
                     )
                 )
             }

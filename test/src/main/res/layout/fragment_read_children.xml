@@ -149,4 +149,19 @@
         android:layout_height="wrap_content"
         android:text="Value: 40 / 100" />
 
+    <!-- Issue #118: an explicit label relationship outside existing focus groups. -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Name"
+        android:labelFor="@+id/name_field" />
+
+    <EditText
+        android:id="@id/name_field"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter your name"
+        android:inputType="textPersonName"
+        android:importantForAccessibility="yes" />
+
 </LinearLayout>

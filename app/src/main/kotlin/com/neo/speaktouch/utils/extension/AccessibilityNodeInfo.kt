@@ -19,6 +19,7 @@
 
 package com.neo.speaktouch.utils.extension
 
+import android.os.Build
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
@@ -84,6 +85,15 @@ fun AccessibilityNodeInfo.indexOfChild(
 }
 
 val AccessibilityNodeInfo.lastIndex get() = childCount - 1
+
+/** Explicit labels only; callers decide which label content is suitable for speech. */
+fun AccessibilityNodeInfoCompat.getAssociatedLabels(): List<AccessibilityNodeInfoCompat?> {
+    return if (Build.VERSION.SDK_INT >= 36) {
+        unwrap().labeledByList.map { label -> label?.let { AccessibilityNodeInfoCompat.wrap(it) } }
+    } else {
+        listOfNotNull(labeledBy)
+    }
+}
 
 fun AccessibilityNodeInfoCompat.toStateText(
     type: Type? = Type.get(this)
