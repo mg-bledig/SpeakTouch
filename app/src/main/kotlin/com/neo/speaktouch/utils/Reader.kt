@@ -77,9 +77,9 @@ class Reader @Inject constructor(
                     read(
                         node = child,
                         options = Options(
-                            // Announce explicit state descriptions and checkable fallbacks.
+                            // Announce explicit descriptions and checkable/slider fallbacks.
                             mustReadState = child.stateDescription.isNotNullOrEmpty() ||
-                                    type is Type.Checkable,
+                                    type is Type.Checkable || type is Type.Slider,
                             // Should not announce the type image of children
                             mustReadType = type !is Type.Image
                         )

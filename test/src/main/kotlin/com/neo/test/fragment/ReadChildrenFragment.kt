@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.SeekBar
 import androidx.core.view.ViewCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.RecyclerView
@@ -29,6 +30,16 @@ class ReadChildrenFragment : Fragment(R.layout.fragment_read_children) {
         }
 
         ViewCompat.setScreenReaderFocusable(binding.screenReaderFocusGroup, true)
+
+        // SeekBar's default minimum is zero, including on API levels before setMin().
+        binding.testLevelSlider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                binding.testLevelValue.text = "Value: $progress / 100"
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
+        })
     }
 
     override fun onDestroyView() {

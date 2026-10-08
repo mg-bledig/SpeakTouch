@@ -133,4 +133,20 @@
 
     </LinearLayout>
 
+    <!-- Issue #95: native slider with platform-provided state description. -->
+    <SeekBar
+        android:id="@+id/test_level_slider"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:contentDescription="Test level"
+        android:importantForAccessibility="yes"
+        android:max="100"
+        android:progress="40" />
+
+    <TextView
+        android:id="@+id/test_level_value"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Value: 40 / 100" />
+
 </LinearLayout>

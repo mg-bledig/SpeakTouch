@@ -26,6 +26,7 @@
     <string name="text_radio_type">option button</string>
     <string name="text_checkbox_type">checkbox</string>
     <string name="text_button_type">button</string>
+    <string name="text_slider_type">slider</string>
     <string name="text_editfield_type">edit field</string>
     <string name="text_options_type">options</string>
     <string name="text_list_type">list</string>

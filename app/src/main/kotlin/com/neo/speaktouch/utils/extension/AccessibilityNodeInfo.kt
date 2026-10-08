@@ -27,6 +27,7 @@ import com.neo.speaktouch.model.Type
 import com.neo.speaktouch.model.Text
 import com.neo.speaktouch.utils.NodeValidator
 import java.lang.reflect.Method
+import java.text.NumberFormat
 
 fun AccessibilityNodeInfoCompat.getNearestAncestor(
     predicate: (AccessibilityNodeInfoCompat) -> Boolean
@@ -92,6 +93,10 @@ fun AccessibilityNodeInfoCompat.toStateText(
         return Text(stateDescription.toString())
     }
 
+    if (type is Type.Slider) {
+        return toSliderStateText()
+    }
+
     if (type is Type.Checkable) {
         return toCheckableStateText(type)
     }
@@ -104,6 +109,26 @@ fun AccessibilityNodeInfoCompat.toStateText(
     }
 
     return null
+}
+
+private fun AccessibilityNodeInfoCompat.toSliderStateText(): Text? {
+    val range = rangeInfo ?: return null
+    val current = range.current
+    if (!range.min.isFinite() || !range.max.isFinite() || !current.isFinite() ||
+        range.min >= range.max || current < range.min || current > range.max) return null
+
+    val value = current.toString().toBigDecimal()
+    val formatted = when (range.type) {
+        AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_INT ->
+            NumberFormat.getIntegerInstance().format(value.toBigInteger())
+        AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_FLOAT ->
+            NumberFormat.getNumberInstance().apply { maximumFractionDigits = 340 }.format(value)
+        AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_PERCENT ->
+            NumberFormat.getPercentInstance().apply { maximumFractionDigits = 340 }
+                .format(value.movePointLeft(2))
+        else -> return null
+    }
+    return Text(formatted)
 }
 
 fun AccessibilityNodeInfoCompat.toCheckableStateText(

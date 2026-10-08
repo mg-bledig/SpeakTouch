@@ -26,6 +26,7 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.RadioButton
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.ToggleButton
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
@@ -52,6 +53,8 @@ sealed class Type {
 
     object Button : Type()
 
+    object Slider : Type()
+
     object EditField : Type()
 
     object DropdownList : Type()
@@ -64,6 +67,8 @@ sealed class Type {
         fun get(node: AccessibilityNodeInfoCompat): Type? {
 
             val className = node.className ?: return null
+
+            if (className `is` SeekBar::class.java) return Slider
 
             /* ImageView */
 
@@ -127,6 +132,7 @@ sealed class Type {
 
 fun Type.toTypeText() = when (this) {
     Type.Button -> Text(R.string.text_button_type)
+    Type.Slider -> Text(R.string.text_slider_type)
     Type.DropdownList -> Text(R.string.text_options_type)
     Type.EditField -> Text(R.string.text_editfield_type)
     Type.Image -> Text(R.string.text_image_type)

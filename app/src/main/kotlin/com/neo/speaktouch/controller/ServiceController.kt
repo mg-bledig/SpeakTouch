@@ -34,7 +34,7 @@ class ServiceController @Inject constructor(
     }
 
     fun getFocused(): AccessibilityNodeInfo? {
-        return getRoot().getFocusedOrNull()
+        return getOrThrow().rootInActiveWindow?.getFocusedOrNull()
     }
 
     fun getRoot(): AccessibilityNodeInfo {
