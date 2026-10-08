@@ -22,6 +22,7 @@ package com.neo.speaktouch.controller
 import android.view.accessibility.AccessibilityNodeInfo
 import com.neo.speaktouch.intercepter.event.CallbackInterceptor
 import com.neo.speaktouch.model.NodeFilter
+import com.neo.speaktouch.utils.TraversalOrder
 import com.neo.speaktouch.utils.extension.Direction
 import com.neo.speaktouch.utils.extension.nodeScan
 import com.neo.speaktouch.utils.extension.performFocus
@@ -39,10 +40,49 @@ class FocusController @Inject constructor(
         return serviceController.getFocused() ?: serviceController.getRoot()
     }
 
+    private fun getTraversalOrder(): TraversalOrder? =
+        serviceController.getOrThrow().rootInActiveWindow?.let { TraversalOrder(it) }
+
+    private fun moveInOrder(
+        order: TraversalOrder,
+        target: AccessibilityNodeInfo,
+        filter: NodeFilter,
+        forward: Boolean
+    ): Boolean {
+        if (!order.isReordered) return false
+        val nodes = order.nodes()
+        val index = nodes.indexOf(target)
+        if (index < 0) return false
+        val remaining = if (forward) nodes.drop(index + 1) else nodes.take(index).asReversed()
+        val candidates = remaining.filter { filter.filter(it) }
+        val next = candidates.firstOrNull()
+        val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        for (ancestor in order.ancestorsOf(target)) {
+            if (next != null && order.contains(ancestor, next)) break
+            // A cross-subtree leaf constraint can leave and later re-enter a container.
+            // Scroll only when its last eligible item in this direction is exhausted.
+            if (candidates.any { order.contains(ancestor, it) }) continue
+            if (ancestor.performAction(action)) {
+                callbackInterceptor.addCallback(object : CallbackInterceptor.Scroll(ancestor) {
+                    override fun invoke() {
+                        if (forward) moveFocusToNext() else moveFocusToPrevious()
+                    }
+                })
+                return true
+            }
+        }
+        next?.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+        // Ordered boundaries must not fall through to a structural successor/predecessor.
+        return true
+    }
+
     fun moveFocusToPrevious(
         target: AccessibilityNodeInfo = getTarget(),
         nodeFilter: NodeFilter = NodeFilter.Focusable
     ) {
+        val order = getTraversalOrder()
+        if (order != null && moveInOrder(order, target, nodeFilter, forward = false)) return
         nodeScan {
 
             target.ancestors {
@@ -84,6 +124,8 @@ class FocusController @Inject constructor(
         target: AccessibilityNodeInfo = getTarget(),
         nodeFilter: NodeFilter = NodeFilter.Focusable
     ) {
+        val order = getTraversalOrder()
+        if (order != null && moveInOrder(order, target, nodeFilter, forward = true)) return
         nodeScan {
 
             target.descendants(Direction.Right()) {
@@ -132,14 +174,9 @@ class FocusController @Inject constructor(
         val currentFocus = root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
 
         if (currentFocus == null) {
-            nodeScan {
-                root.descendants(Direction.Right()) {
-                    if (NodeFilter.Focusable.filter(current)) {
-                        current.performFocus(this)
-                    }
-                    recursive()
-                }
-            }
+            TraversalOrder(root).nodes().firstOrNull {
+                it != root && NodeFilter.Focusable.filter(it)
+            }?.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
             return
         }
 

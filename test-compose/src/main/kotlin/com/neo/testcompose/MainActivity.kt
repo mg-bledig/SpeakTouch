@@ -42,7 +42,8 @@ class MainActivity : ComponentActivity() {
 private val cases = listOf(
     "Unmerged comparison", "Merged passive children", "Nested passive container",
     "Merged parent with own text", "Independent actionable child",
-    "Invisible merged group", "Merged group inside collection"
+    "Invisible merged group", "Merged group inside collection",
+    "Explicit traversal order", "Traversal order comparison"
 )
 
 @Composable
@@ -89,6 +90,16 @@ private fun Fixture(case: Int) {
                 }
             }
             item { BasicText("After group") }
+        }
+        7 -> Column(Modifier.semantics { isTraversalGroup = true }) {
+            BasicText("First", Modifier.semantics { traversalIndex = 0f })
+            BasicText("Second", Modifier.semantics { traversalIndex = 2f })
+            BasicText("Third", Modifier.semantics { traversalIndex = 1f })
+        }
+        8 -> Column {
+            BasicText("First")
+            BasicText("Second")
+            BasicText("Third")
         }
     }
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="8dp"
+    android:focusable="false"
+    android:clickable="false"
+    android:importantForAccessibility="no">
+    <!-- Issue #96: independent buttons; no parent focus or speech grouping. -->
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="A: structural order" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:focusable="false" android:clickable="false">
+        <Button android:id="@+id/traversal_a_first" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="First" android:focusable="true" android:importantForAccessibility="yes" />
+        <Button android:id="@+id/traversal_a_second" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Second" android:focusable="true" android:importantForAccessibility="yes" />
+        <Button android:id="@+id/traversal_a_third" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Third" android:focusable="true" android:importantForAccessibility="yes" />
+    </LinearLayout>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="B: BEFORE order" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:focusable="false" android:clickable="false">
+        <Button android:id="@+id/traversal_b_first" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="First" android:focusable="true" android:importantForAccessibility="yes" android:accessibilityTraversalBefore="@+id/traversal_b_third" />
+        <Button android:id="@+id/traversal_b_second" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Second" android:focusable="true" android:importantForAccessibility="yes" />
+        <Button android:id="@+id/traversal_b_third" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Third" android:focusable="true" android:importantForAccessibility="yes" android:accessibilityTraversalBefore="@id/traversal_b_second" />
+    </LinearLayout>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="C: AFTER order" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:focusable="false" android:clickable="false">
+        <Button android:id="@+id/traversal_c_first" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="First" android:focusable="true" android:importantForAccessibility="yes" />
+        <Button android:id="@+id/traversal_c_second" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Second" android:focusable="true" android:importantForAccessibility="yes" android:accessibilityTraversalAfter="@+id/traversal_c_third" />
+        <Button android:id="@+id/traversal_c_third" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Third" android:focusable="true" android:importantForAccessibility="yes" android:accessibilityTraversalAfter="@id/traversal_c_first" />
+    </LinearLayout>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="End of traversal fixtures" />
+</LinearLayout>
