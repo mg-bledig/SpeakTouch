@@ -23,8 +23,10 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
+import android.view.KeyEvent
 import com.neo.speaktouch.controller.Controllers
 import com.neo.speaktouch.controller.FocusController
+import com.neo.speaktouch.controller.VolumeController
 import com.neo.speaktouch.intercepter.Interceptors
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
 import com.neo.speaktouch.utils.extension.addFlags
@@ -41,6 +43,9 @@ class SpeakTouchService : AccessibilityService () {
     @Inject
     lateinit var focusController: FocusController
 
+    @Inject
+    lateinit var volumeController: VolumeController
+
     override fun onCreate() {
         super.onCreate()
 
@@ -50,6 +55,10 @@ class SpeakTouchService : AccessibilityService () {
     override fun onServiceConnected() {
         super.onServiceConnected()
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            addFlags(AccessibilityServiceInfo.FLAG_ENABLE_ACCESSIBILITY_VOLUME,
+                AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             addFlags(AccessibilityServiceInfo.FLAG_REQUEST_MULTI_FINGER_GESTURES)
         }
@@ -81,6 +90,8 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onInterrupt() = Unit
+
+    override fun onKeyEvent(event: KeyEvent): Boolean = volumeController.handle(event)
 
     @Deprecated("Deprecated in Java")
     override fun onGesture(gestureId: Int): Boolean {

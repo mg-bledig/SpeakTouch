@@ -21,5 +21,6 @@
     android:accessibilityFeedbackType="feedbackSpoken|feedbackHaptic"
     android:accessibilityFlags="flagDefault|flagRequestTouchExplorationMode|flagRetrieveInteractiveWindows"
     android:canRequestTouchExplorationMode="true"
+    android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="true"
     android:notificationTimeout="0" />

@@ -33,6 +33,8 @@ class SpeechController(
     private val reader: Reader
 ) {
     val isSpeaking: Boolean get() = textToSpeech.isSpeaking
+    val isActivelySpeaking: Boolean
+        @Synchronized get() = playing != null && pausedText == null && textToSpeech.isSpeaking
 
     private data class Playing(val text: String, val id: String)
     private var playing: Playing? = null

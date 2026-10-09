@@ -302,6 +302,8 @@ class PauseResumeTest {
         target.serviceInfo = AccessibilityServiceInfo().apply { flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
         SpeakTouchService::class.java.getDeclaredMethod("onServiceConnected").apply { isAccessible = true }.invoke(target)
         var expected = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        if (Build.VERSION.SDK_INT >= 26) expected = expected or AccessibilityServiceInfo.FLAG_ENABLE_ACCESSIBILITY_VOLUME or
+            AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         if (Build.VERSION.SDK_INT >= 30) expected = expected or AccessibilityServiceInfo.FLAG_REQUEST_MULTI_FINGER_GESTURES
         if (Build.VERSION.SDK_INT >= 31) expected = expected or AccessibilityServiceInfo.FLAG_REQUEST_2_FINGER_PASSTHROUGH
         assertEquals(expected, target.serviceInfo.flags)
