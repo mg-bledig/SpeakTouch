@@ -70,7 +70,7 @@ class RefocusTest {
         command = RefocusController(wrapper, speech)
         callbacks = CallbackInterceptor()
         gestures = GestureInterceptor(FocusController(callbacks, wrapper), wrapper,
-            SliderController(wrapper, speech), command)
+            SliderController(wrapper, speech), command, speech)
     }
 
     @Test fun `one invocation speaks once and repeat invocation works without moving focus`() {

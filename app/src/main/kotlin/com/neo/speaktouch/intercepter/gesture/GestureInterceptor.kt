@@ -26,6 +26,7 @@ import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.RefocusController
 import com.neo.speaktouch.controller.ServiceController
 import com.neo.speaktouch.controller.SliderController
+import com.neo.speaktouch.controller.SpeechController
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
 
@@ -34,10 +35,17 @@ class GestureInterceptor @Inject constructor(
     private val focusController: FocusController,
     private val serviceController: ServiceController,
     private val sliderController: SliderController,
-    private val refocusController: RefocusController
+    private val refocusController: RefocusController,
+    private val speechController: SpeechController
 ) {
 
     fun handle(gestureId: Int): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            gestureId == AccessibilityService.GESTURE_2_FINGER_SINGLE_TAP) {
+            speechController.togglePauseResume()
+            return true
+        }
+        speechController.cancelResume()
 
         when (gestureId) {
             AccessibilityService.GESTURE_SWIPE_UP_AND_DOWN -> {

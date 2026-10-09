@@ -82,7 +82,7 @@ class SliderGestureTest {
         speech = SpeechController(tts, context, Reader(context))
         val wrapper = ServiceController(service)
         gestures = GestureInterceptor(FocusController(CallbackInterceptor(), wrapper), wrapper,
-            SliderController(wrapper, speech), RefocusController(wrapper, speech))
+            SliderController(wrapper, speech), RefocusController(wrapper, speech), speech)
     }
 
     private fun simulateAdjustment(state: String? = null) {

@@ -19,6 +19,7 @@
 
 package com.neo.speaktouch.intercepter.event
 
+import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.controller.SpeechController
@@ -35,15 +36,29 @@ class SpeechInterceptor @Inject constructor(
 ) : EventInterceptor {
 
     override fun handle(event: AccessibilityEvent) {
-
-        if (event.isTouchInteractionStart && speech.isSpeaking) {
-
-            speech.stop()
-
+        if (event.isTouchInteractionStart) {
+            speech.onTouchStart()
             return
         }
 
+        if (event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_END) {
+            speech.onTouchEnd()
+            return
+        }
+        if (event.eventType == AccessibilityEvent.TYPE_GESTURE_DETECTION_START) {
+            speech.onGestureDetectionStart()
+            return
+        }
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
+            (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.P ||
+                    event.windowChanges and AccessibilityEvent.WINDOWS_CHANGE_ACTIVE != 0)))
+            speech.cancelResume()
+
         if (event.isAccessibilityFocused) {
+            speech.cancelResume()
             speech.speak(AccessibilityNodeInfoCompat.wrap(event.source ?: return))
         }
     }

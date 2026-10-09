@@ -50,6 +50,9 @@ class SpeakTouchService : AccessibilityService () {
     override fun onServiceConnected() {
         super.onServiceConnected()
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            addFlags(AccessibilityServiceInfo.FLAG_REQUEST_MULTI_FINGER_GESTURES)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             addFlags(AccessibilityServiceInfo.FLAG_REQUEST_2_FINGER_PASSTHROUGH)
         }
