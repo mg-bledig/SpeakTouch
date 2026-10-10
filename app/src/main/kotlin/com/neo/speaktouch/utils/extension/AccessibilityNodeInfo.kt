@@ -99,12 +99,17 @@ fun AccessibilityNodeInfoCompat.toStateText(
     type: Type? = Type.get(this)
 ): Text? {
 
-    if (stateDescription.isNotNullOrEmpty()) {
+    if (stateDescription.isNotNullOrEmpty() &&
+        (type !is Type.ProgressBar || stateDescription.toString().isNotBlank())) {
         return Text(stateDescription.toString())
     }
 
     if (type is Type.Slider) {
         return toSliderStateText()
+    }
+
+    if (type is Type.ProgressBar) {
+        return toProgressBarStateText()
     }
 
     if (type is Type.Checkable) {
@@ -119,6 +124,28 @@ fun AccessibilityNodeInfoCompat.toStateText(
     }
 
     return null
+}
+
+private fun AccessibilityNodeInfoCompat.toProgressBarStateText(): Text? {
+    // Native indeterminate ProgressBars expose no range. Keep any provider state
+    // description above, but never invent a percentage when the range is absent.
+    val range = rangeInfo ?: return null
+    val min = range.min.toDouble()
+    val max = range.max.toDouble()
+    val current = range.current.toDouble()
+    if (!min.isFinite() || !max.isFinite() || !current.isFinite() ||
+        min >= max || current < min || current > max) return null
+
+    val fraction = when (range.type) {
+        AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_INT,
+        AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_FLOAT -> (current - min) / (max - min)
+        AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_PERCENT -> {
+            if (current < 0.0 || current > 100.0) return null
+            current / 100.0
+        }
+        else -> return null
+    }
+    return Text(NumberFormat.getPercentInstance().format(fraction))
 }
 
 private fun AccessibilityNodeInfoCompat.toSliderStateText(): Text? {

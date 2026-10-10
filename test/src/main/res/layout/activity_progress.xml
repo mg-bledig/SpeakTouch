@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <ProgressBar
+        android:id="@+id/download_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:contentDescription="Download progress"
+        android:importantForAccessibility="yes"
+        android:indeterminate="false"
+        android:max="200"
+        android:progress="80" />
+
+    <TextView
+        android:id="@+id/download_progress_value"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Value: 80 / 200" />
+
+    <Button
+        android:id="@+id/start_progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Start" />
+
+    <Button
+        android:id="@+id/reset_progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Reset" />
+</LinearLayout>

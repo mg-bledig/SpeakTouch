@@ -25,6 +25,7 @@
     <string name="text_checkbox_type">pole wyboru</string>
     <string name="text_button_type">przycisk</string>
     <string name="text_slider_type">suwak</string>
+    <string name="text_progress_bar_type">pasek postępu</string>
     <string name="text_editfield_type">pole edycji</string>
     <string name="text_options_type">opcje</string>
     <string name="text_list_type">lista</string>

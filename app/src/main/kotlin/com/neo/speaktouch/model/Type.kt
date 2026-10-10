@@ -55,6 +55,8 @@ sealed class Type {
 
     object Slider : Type()
 
+    object ProgressBar : Type()
+
     object EditField : Type()
 
     object DropdownList : Type()
@@ -69,6 +71,8 @@ sealed class Type {
             val className = node.className ?: return null
 
             if (className `is` SeekBar::class.java) return Slider
+
+            if (className `is` android.widget.ProgressBar::class.java) return ProgressBar
 
             /* ImageView */
 
@@ -133,6 +137,7 @@ sealed class Type {
 fun Type.toTypeText() = when (this) {
     Type.Button -> Text(R.string.text_button_type)
     Type.Slider -> Text(R.string.text_slider_type)
+    Type.ProgressBar -> Text(R.string.text_progress_bar_type)
     Type.DropdownList -> Text(R.string.text_options_type)
     Type.EditField -> Text(R.string.text_editfield_type)
     Type.Image -> Text(R.string.text_image_type)
