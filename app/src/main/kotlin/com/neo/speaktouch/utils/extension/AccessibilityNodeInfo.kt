@@ -129,6 +129,12 @@ fun AccessibilityNodeInfoCompat.toStateText(
 private fun AccessibilityNodeInfoCompat.toProgressBarStateText(): Text? {
     // Native indeterminate ProgressBars expose no range. Keep any provider state
     // description above, but never invent a percentage when the range is absent.
+    val fraction = progressFraction() ?: return null
+    return Text(NumberFormat.getPercentInstance().format(fraction))
+}
+
+/** Valid determinate progress, shared by reading and completion feedback. */
+internal fun AccessibilityNodeInfoCompat.progressFraction(): Double? {
     val range = rangeInfo ?: return null
     val min = range.min.toDouble()
     val max = range.max.toDouble()
@@ -145,7 +151,7 @@ private fun AccessibilityNodeInfoCompat.toProgressBarStateText(): Text? {
         }
         else -> return null
     }
-    return Text(NumberFormat.getPercentInstance().format(fraction))
+    return fraction
 }
 
 private fun AccessibilityNodeInfoCompat.toSliderStateText(): Text? {

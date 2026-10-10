@@ -23,16 +23,18 @@ import com.neo.speaktouch.intercepter.event.FocusInterceptor
 import com.neo.speaktouch.intercepter.gesture.GestureInterceptor
 import com.neo.speaktouch.intercepter.event.HapticInterceptor
 import com.neo.speaktouch.intercepter.event.SpeechInterceptor
+import com.neo.speaktouch.intercepter.event.ProgressInterceptor
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
 
 @ServiceScoped
 class Interceptors @Inject constructor(
     val speech: SpeechInterceptor,
+    val progress: ProgressInterceptor,
     val focus: FocusInterceptor,
     val haptic: HapticInterceptor,
     val callback : CallbackInterceptor,
     val gesture: GestureInterceptor
 ) {
-    val event = listOf(speech, focus, haptic, callback)
+    val event = listOf(speech, progress, focus, haptic, callback)
 }
