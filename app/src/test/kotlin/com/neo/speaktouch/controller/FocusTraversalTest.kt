@@ -84,6 +84,35 @@ class FocusTraversalTest {
         val a = node("First"); val b = node("Second"); val c = node("Third")
         add(root, a, b, c); sweep(listOf(a, b, c))
     }
+    @Test fun `root and target are null when active root is unavailable`() {
+        service.root = null
+        assertNull(ServiceController(service).getRoot())
+        assertNull(controller.getTarget())
+    }
+    @Test fun `default focus movement does nothing when active root is unavailable`() {
+        val a = node("A"); val b = node("B"); add(root, a, b); focus(a)
+        service.root = null
+        controller.moveFocusToFirst()
+        controller.moveFocusToNext()
+        controller.moveFocusToPrevious()
+        assertEquals(a, focused)
+        listOf(root, a, b).forEach { assertTrue(shadow(it).performedActions.isEmpty()) }
+    }
+    @Test fun `navigation resumes after active root becomes available again`() {
+        val a = node("A"); val b = node("B"); add(root, a, b)
+        service.root = null
+        controller.moveFocusToFirst()
+        controller.moveFocusToNext()
+        controller.moveFocusToPrevious()
+        assertNull(focused)
+        service.root = root
+        assertEquals(root, ServiceController(service).getRoot())
+        assertEquals(root, controller.getTarget())
+        controller.moveFocusToFirst(); assertFocus("A")
+        assertEquals(a, controller.getTarget())
+        controller.moveFocusToNext(); assertFocus("B")
+        controller.moveFocusToPrevious(); assertFocus("A")
+    }
     @Test fun `explicit target keeps structural navigation when active root is temporarily unavailable`() {
         val a = node("A"); val b = node("B"); add(root, a, b); focus(a)
         service.root = null

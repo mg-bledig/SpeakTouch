@@ -35,7 +35,7 @@ class FocusController @Inject constructor(
     private val serviceController: ServiceController
 ) {
 
-    fun getTarget(): AccessibilityNodeInfo {
+    fun getTarget(): AccessibilityNodeInfo? {
 
         return serviceController.getFocused() ?: serviceController.getRoot()
     }
@@ -78,14 +78,15 @@ class FocusController @Inject constructor(
     }
 
     fun moveFocusToPrevious(
-        target: AccessibilityNodeInfo = getTarget(),
+        target: AccessibilityNodeInfo? = getTarget(),
         nodeFilter: NodeFilter = NodeFilter.Focusable
     ) {
+        val resolvedTarget = target ?: return
         val order = getTraversalOrder()
-        if (order != null && moveInOrder(order, target, nodeFilter, forward = false)) return
+        if (order != null && moveInOrder(order, resolvedTarget, nodeFilter, forward = false)) return
         nodeScan {
 
-            target.ancestors {
+            resolvedTarget.ancestors {
 
                 current.descendants(
                     Direction.Left(
@@ -121,14 +122,15 @@ class FocusController @Inject constructor(
     }
 
     fun moveFocusToNext(
-        target: AccessibilityNodeInfo = getTarget(),
+        target: AccessibilityNodeInfo? = getTarget(),
         nodeFilter: NodeFilter = NodeFilter.Focusable
     ) {
+        val resolvedTarget = target ?: return
         val order = getTraversalOrder()
-        if (order != null && moveInOrder(order, target, nodeFilter, forward = true)) return
+        if (order != null && moveInOrder(order, resolvedTarget, nodeFilter, forward = true)) return
         nodeScan {
 
-            target.descendants(Direction.Right()) {
+            resolvedTarget.descendants(Direction.Right()) {
 
                 if (nodeFilter.filter(current)) {
                     current.performFocus(this)
@@ -137,7 +139,7 @@ class FocusController @Inject constructor(
                 recursive()
             }
 
-            target.ancestors {
+            resolvedTarget.ancestors {
 
                 current.descendants(
                     Direction.Right(
