@@ -22,6 +22,7 @@ package com.neo.speaktouch.intercepter.gesture
 import android.accessibilityservice.AccessibilityService
 import android.os.Build
 import androidx.annotation.RequiresApi
+import com.neo.speaktouch.controller.ContextMenuController
 import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.RefocusController
 import com.neo.speaktouch.controller.ServiceController
@@ -36,7 +37,8 @@ class GestureInterceptor @Inject constructor(
     private val serviceController: ServiceController,
     private val sliderController: SliderController,
     private val refocusController: RefocusController,
-    private val speechController: SpeechController
+    private val speechController: SpeechController,
+    private val contextMenuController: ContextMenuController? = null
 ) {
 
     fun handle(gestureId: Int): Boolean {
@@ -48,6 +50,10 @@ class GestureInterceptor @Inject constructor(
         speechController.cancelResume()
 
         when (gestureId) {
+            AccessibilityService.GESTURE_SWIPE_DOWN_AND_RIGHT -> {
+                contextMenuController?.open()
+                return contextMenuController != null
+            }
             AccessibilityService.GESTURE_SWIPE_UP_AND_DOWN -> {
                 refocusController.reread()
                 return true
@@ -90,6 +96,7 @@ class GestureInterceptor @Inject constructor(
     private fun handleApi31(gestureId: Int): Boolean {
 
         when (gestureId) {
+
             AccessibilityService.GESTURE_2_FINGER_DOUBLE_TAP -> {
 
                 serviceController.performGlobalAction(

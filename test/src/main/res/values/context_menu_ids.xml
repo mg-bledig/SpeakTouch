@@ -1,0 +1,4 @@
+<resources>
+    <item name="context_retry" type="id" />
+    <item name="context_archive" type="id" />
+</resources>

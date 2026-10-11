@@ -24,6 +24,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.KeyEvent
+import com.neo.speaktouch.controller.ContextMenuController
 import com.neo.speaktouch.controller.Controllers
 import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.VolumeController
@@ -45,6 +46,8 @@ class SpeakTouchService : AccessibilityService () {
 
     @Inject
     lateinit var volumeController: VolumeController
+
+    @Inject lateinit var contextMenuController: ContextMenuController
 
     override fun onCreate() {
         super.onCreate()
@@ -68,11 +71,12 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        contextMenuController.onEvent(event)
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 val windowTitle = event.text.joinToString(" ").ifEmpty { "Unknown window" }
                 Timber.d("New window detected: $windowTitle")
-                focusController.moveFocusToFirst()
+                if (contextMenuController.shouldInitializeFocus(event)) focusController.moveFocusToFirst()
             }
         }
 
@@ -82,6 +86,7 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onDestroy() {
+        contextMenuController.destroy()
         super.onDestroy()
 
         interceptors.event.forEach(EventInterceptor::finish)

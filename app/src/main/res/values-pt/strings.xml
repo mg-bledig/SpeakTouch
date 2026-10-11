@@ -45,4 +45,16 @@
     <string name="action_dismiss">Dispensar</string>
     <string name="action_expand">Expandir</string>
     <string name="action_collapse">Recolher</string>
+    <string name="menu_title">Menu do SpeakTouch</string>
+    <string name="menu_cancel">Cancelar</string>
+    <string name="menu_click">Clicar</string>
+    <string name="menu_long_click">Clique longo</string>
+    <string name="menu_paste">Colar</string>
+    <string name="menu_clear">Limpar</string>
+    <string name="menu_check">Marcar</string>
+    <string name="menu_uncheck">Desmarcar</string>
+    <string name="menu_empty">Nenhuma ação disponível</string>
+    <string name="menu_action_gone">Ação indisponível</string>
+    <string name="menu_target_gone">Elemento indisponível</string>
+    <string name="menu_failed">A ação falhou</string>
 </resources>

@@ -47,4 +47,16 @@
     <string name="action_dismiss">Dismiss</string>
     <string name="action_expand">Expand</string>
     <string name="action_collapse">Collapse</string>
+    <string name="menu_title">SpeakTouch menu</string>
+    <string name="menu_cancel">Cancel</string>
+    <string name="menu_click">Click</string>
+    <string name="menu_long_click">Long click</string>
+    <string name="menu_paste">Paste</string>
+    <string name="menu_clear">Clear</string>
+    <string name="menu_check">Check</string>
+    <string name="menu_uncheck">Uncheck</string>
+    <string name="menu_empty">No actions available</string>
+    <string name="menu_action_gone">Action no longer available</string>
+    <string name="menu_target_gone">Target no longer available</string>
+    <string name="menu_failed">Action failed</string>
 </resources>
