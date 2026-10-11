@@ -44,4 +44,7 @@
     <string name="text_not_pressed">not pressed</string>
 
     <string name="speak_touch_activated">Speak Touch Activated</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_expand">Expand</string>
+    <string name="action_collapse">Collapse</string>
 </resources>

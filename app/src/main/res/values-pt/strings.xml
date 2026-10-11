@@ -42,4 +42,7 @@
     <string name="text_pressed">pressionado</string>
     <string name="text_not_pressed">não pressionado</string>
     <string name="speak_touch_activated">Speak Touch Ativado</string>
+    <string name="action_dismiss">Dispensar</string>
+    <string name="action_expand">Expandir</string>
+    <string name="action_collapse">Recolher</string>
 </resources>

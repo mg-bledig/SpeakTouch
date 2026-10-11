@@ -42,4 +42,7 @@
     <string name="text_not_pressed">nie wciśnięto</string>
 
     <string name="speak_touch_activated">Speak Touch aktywowany</string>
+    <string name="action_dismiss">Odrzuć</string>
+    <string name="action_expand">Rozwiń</string>
+    <string name="action_collapse">Zwiń</string>
 </resources>
