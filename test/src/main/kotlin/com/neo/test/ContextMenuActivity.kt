@@ -5,6 +5,11 @@ import android.content.ClipboardManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.URLSpan
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.*
@@ -116,6 +121,49 @@ class ContextMenuActivity : AppCompatActivity() {
             verification.setSelection(verification.length())
         }
         rows.addView(verification)
+
+        var help = 0
+        var license = 0
+        val helpText = label("Help links: 0")
+        val licenseText = label("License links: 0")
+        fun helpClicked() { helpText.text = "Help links: ${++help}" }
+        fun licenseClicked() { licenseText.text = "License links: ${++license}" }
+        val singleLink = label("Open help").apply {
+            movementMethod = LinkMovementMethod.getInstance()
+            ViewCompat.enableAccessibleClickableSpanSupport(this)
+            text = SpannableString("Open help").apply {
+                setSpan(object : URLSpan("https://example.com/help") {
+                    // Provider callback is authoritative; this fixture does not launch a browser.
+                    override fun onClick(widget: View) { helpClicked() }
+                }, 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        fun linkedText() = SpannableString("Read Help and License").apply {
+            setSpan(object : ClickableSpan() {
+                override fun onClick(widget: View) { helpClicked() }
+            }, 5, 9, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(object : ClickableSpan() {
+                override fun onClick(widget: View) { licenseClicked() }
+            }, 14, 21, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val multiLink = label("Read Help and License").apply {
+            movementMethod = LinkMovementMethod.getInstance()
+            ViewCompat.enableAccessibleClickableSpanSupport(this)
+            text = linkedText()
+        }
+        var comparisonRetries = 0
+        val comparisonText = label("Link comparison retries: 0")
+        button("Retry link comparison") { comparisonText.text = "Link comparison retries: ${++comparisonRetries}" }
+        button("Change link text in 15 seconds") {
+            handler.postDelayed({ multiLink.text = "Links replaced" }, 15000)
+        }
+        button("Remove link text in 15 seconds") {
+            handler.postDelayed({ rows.removeView(multiLink) }, 15000)
+        }
+        button("Restore link text") {
+            if (multiLink.parent == null) rows.addView(multiLink, rows.indexOfChild(singleLink) + 1)
+            multiLink.text = linkedText()
+        }
     }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); super.onDestroy() }
 }

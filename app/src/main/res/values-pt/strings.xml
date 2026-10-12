@@ -47,6 +47,7 @@
     <string name="action_collapse">Recolher</string>
     <string name="menu_title">Menu do SpeakTouch</string>
     <string name="menu_cancel">Cancelar</string>
+    <string name="menu_links">Links</string>
     <string name="menu_click">Clicar</string>
     <string name="menu_long_click">Clique longo</string>
     <string name="menu_paste">Colar</string>

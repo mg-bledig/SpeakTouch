@@ -2,7 +2,10 @@ package com.neo.speaktouch.controller
 
 import android.accessibilityservice.AccessibilityService
 import android.app.AlertDialog
+import android.content.DialogInterface
+import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -139,5 +142,94 @@ class ContextMenuControllerTest {
         buttons(dialog().window!!.decorView).first { it.text.toString()=="Copy text" }.performClick()
         assertEquals(listOf("Copied"),shadowOf(tts).spokenTextList)
         assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    private fun embeddedLinks() {
+        target.text="Help License"
+        val prefix="androidx.view.accessibility.AccessibilityNodeInfoCompat."
+        target.extras.putIntegerArrayList(prefix+"SPANS_START_KEY",arrayListOf(0,5))
+        target.extras.putIntegerArrayList(prefix+"SPANS_END_KEY",arrayListOf(4,12))
+        target.extras.putIntegerArrayList(prefix+"SPANS_FLAGS_KEY",arrayListOf(33,33))
+        target.extras.putIntegerArrayList(prefix+"SPANS_ID_KEY",arrayListOf(7,8))
+        target.extras.putInt(prefix+"SPANS_ACTION_ID_KEY",0x7f010200)
+        target.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(0x7f010200,null))
+    }
+    private fun chooseLinks() = buttons(dialog().window!!.decorView).first { it.text.toString()=="Links" }.performClick()
+    @Test fun `Links changes accessible rows in same overlay and dispatches on original target`() {
+        embeddedLinks()
+        shadow(target).setOnPerformActionListener { action,args ->
+            assertEquals(0x7f010200,action); assertEquals(8,args!!.getInt("ACCESSIBILITY_CLICKABLE_SPAN_ID")); true
+        }
+        controller.open(); val originalDialog=dialog()
+        val menuNode=AccessibilityNodeInfo.obtain(); shadow(root).focused=menuNode
+        target.isAccessibilityFocused=false
+        chooseLinks()
+        assertSame(originalDialog,dialog()); assertTrue(controller.isOpen)
+        assertEquals(listOf("Help","License","Cancel"),buttons(dialog().window!!.decorView)
+            .filter { it.isShown }.map { it.text.toString() })
+        // AlertDialog retains unused standard buttons in its view tree, but hides them.
+        assertEquals(View.GONE, originalDialog.getButton(DialogInterface.BUTTON_POSITIVE).visibility)
+        assertEquals(View.GONE, originalDialog.getButton(DialogInterface.BUTTON_NEUTRAL).visibility)
+        val selected=buttons(dialog().window!!.decorView).first { it.text.toString()=="License" }
+        assertTrue(selected.text is String)
+        selected.performClick(); selected.performClick()
+        assertEquals(listOf(0x7f010200),shadow(target).performedActions)
+        assertFalse(controller.isOpen)
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty()) // No claim that the link opened.
+        val menuShadow: SliderNodeShadow=Shadow.extract(menuNode)
+        assertTrue(menuShadow.performedActions.isEmpty())
+    }
+    @Test fun `Cancel from Links closes same session and restores only original target`() {
+        embeddedLinks(); controller.open(); val originalDialog=dialog(); chooseLinks()
+        assertSame(originalDialog,dialog())
+        val menuNode=AccessibilityNodeInfo.obtain(); shadow(root).focused=menuNode
+        target.isAccessibilityFocused=false
+        originalDialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick()
+        // Framework dialog buttons deliver their listener and dismissal via Handler messages.
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(controller.isOpen)
+        assertFalse(originalDialog.isShowing)
+        assertEquals(listOf(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS),shadow(target).performedActions)
+        val menuShadow: SliderNodeShadow=Shadow.extract(menuNode)
+        assertTrue(menuShadow.performedActions.isEmpty())
+    }
+    @Test fun `Cancel from Links does not restore a disappeared original target`() {
+        embeddedLinks(); controller.open(); chooseLinks(); val originalDialog=dialog()
+        target.isAccessibilityFocused=false; shadow(target).setRefreshReturnValue(false)
+        originalDialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(controller.isOpen)
+        assertFalse(originalDialog.isShowing)
+        assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    @Test fun `Cancel from Links does not restore after active window changes`() {
+        embeddedLinks(); controller.open(); chooseLinks(); val originalDialog=dialog()
+        target.isAccessibilityFocused=false
+        val otherWindow=AccessibilityWindowInfo.obtain(); shadowOf(otherWindow).setId(2)
+        shadowOf(root.unwrap()).setAccessibilityWindowInfo(otherWindow)
+        originalDialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(controller.isOpen)
+        assertFalse(originalDialog.isShowing)
+        assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    @Test fun `stale link text fails without dispatch or focus restoration`() {
+        embeddedLinks(); controller.open(); chooseLinks()
+        val oldRow=buttons(dialog().window!!.decorView).first { it.text.toString()=="Help" }
+        target.text="Else License"; oldRow.performClick()
+        assertTrue(shadow(target).performedActions.isEmpty())
+        assertEquals(listOf("Action no longer available"),shadowOf(tts).spokenTextList)
+    }
+    @Test fun `cancelled Links row cannot execute later`() {
+        embeddedLinks(); controller.open(); chooseLinks()
+        val oldRow=buttons(dialog().window!!.decorView).first { it.text.toString()=="Help" }
+        controller.cancel(); oldRow.performClick()
+        assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    @Test fun `replaced Links session cannot execute its old row`() {
+        embeddedLinks(); controller.open(); chooseLinks()
+        val oldRow=buttons(dialog().window!!.decorView).first { it.text.toString()=="Help" }
+        controller.open(); oldRow.performClick()
+        assertTrue(shadow(target).performedActions.isEmpty())
+        controller.destroy()
     }
 }

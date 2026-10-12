@@ -47,23 +47,47 @@ class ContextMenuController @Inject constructor(
         session = captured
         val context = ContextThemeWrapper(service.getOrThrow(), android.R.style.Theme_Material_Light_Dialog_Alert)
         val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        fun execute(operation: () -> MenuResult) {
+            if (session !== captured) return
+            rememberClosing(captured)
+            session = null
+            dialog?.dismiss(); dialog = null
+            when (operation()) {
+                MenuResult.TARGET_GONE -> feedback(R.string.menu_target_gone)
+                MenuResult.ACTION_GONE -> feedback(R.string.menu_action_gone)
+                MenuResult.FAILED -> feedback(R.string.menu_failed)
+                MenuResult.COPIED -> feedback(R.string.menu_copied)
+                MenuResult.COPY_UNAVAILABLE -> feedback(R.string.menu_copy_unavailable)
+                MenuResult.COPY_FAILED -> feedback(R.string.menu_copy_failed)
+                MenuResult.SUCCESS, MenuResult.LINK_DISPATCHED -> Unit
+            }
+        }
+        fun focusFirst(button: Button) = button.post {
+            if (session === captured && button.parent === rows) button.performAccessibilityAction(
+                AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null)
+        }
         val buttons = captured.commands.map { command ->
             Button(context).apply {
                 text = command.label
                 setOnClickListener {
                     if (session !== captured) return@setOnClickListener
-                    rememberClosing(captured)
-                    session = null
-                    dialog?.dismiss(); dialog = null
-                    val result = captured.execute(command)
-                    when (result) {
-                        MenuResult.TARGET_GONE -> feedback(R.string.menu_target_gone)
-                        MenuResult.ACTION_GONE -> feedback(R.string.menu_action_gone)
-                        MenuResult.FAILED -> feedback(R.string.menu_failed)
-                        MenuResult.COPIED -> feedback(R.string.menu_copied)
-                        MenuResult.COPY_UNAVAILABLE -> feedback(R.string.menu_copy_unavailable)
-                        MenuResult.COPY_FAILED -> feedback(R.string.menu_copy_failed)
-                        MenuResult.SUCCESS -> Unit
+                    if (command.operation == MenuOperation.LINKS) {
+                        if (!captured.valid()) {
+                            release(false); feedback(R.string.menu_target_gone)
+                            return@setOnClickListener
+                        }
+                        // Change rows in the same overlay; keep the original target/session.
+                        rows.removeAllViews()
+                        dialog?.setTitle(R.string.menu_links)
+                        captured.links.forEach { link ->
+                            rows.addView(Button(context).apply {
+                                text = link.label
+                                setOnClickListener { execute { captured.executeLink(link) } }
+                            })
+                        }
+                        focusFirst(rows.getChildAt(0) as Button)
+                    } else {
+                        execute { captured.execute(command) }
                     }
                 }
                 rows.addView(this)
@@ -80,10 +104,7 @@ class ContextMenuController @Inject constructor(
                     if (session === captured) release(false)
                 }
                 setOnShowListener {
-                    buttons.first().post {
-                        if (session === captured) buttons.first().performAccessibilityAction(
-                            AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null)
-                    }
+                    focusFirst(buttons.first())
                 }
             }
         dialog = overlay

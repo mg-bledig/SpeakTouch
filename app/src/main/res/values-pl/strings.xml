@@ -47,6 +47,7 @@
     <string name="action_collapse">Zwiń</string>
     <string name="menu_title">Menu SpeakTouch</string>
     <string name="menu_cancel">Anuluj</string>
+    <string name="menu_links">Linki</string>
     <string name="menu_click">Kliknij</string>
     <string name="menu_long_click">Długie kliknięcie</string>
     <string name="menu_paste">Wklej</string>
