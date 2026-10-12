@@ -1,4 +1,11 @@
 <resources>
     <item name="context_retry" type="id" />
     <item name="context_archive" type="id" />
+    <item name="custom_label_share" type="id" />
+    <item name="custom_label_other" type="id" />
+    <item name="custom_label_shared" type="id" />
+    <item name="custom_label_named" type="id" />
+    <item name="custom_label_password" type="id" />
+    <item name="custom_label_sensitive" type="id" />
+    <item name="custom_label_changed" type="id" />
 </resources>

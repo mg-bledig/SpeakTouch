@@ -7,6 +7,8 @@ import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -14,6 +16,8 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.intercepter.event.CallbackInterceptor
 import com.neo.speaktouch.intercepter.gesture.GestureInterceptor
 import com.neo.speaktouch.utils.Reader
+import com.neo.speaktouch.utils.CustomLabelKey
+import com.neo.speaktouch.utils.CustomLabelStore
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -231,5 +235,182 @@ class ContextMenuControllerTest {
         controller.open(); oldRow.performClick()
         assertTrue(shadow(target).performedActions.isEmpty())
         controller.destroy()
+    }
+    private val customKey = CustomLabelKey("example.app", "example.app:id/share")
+    private fun customLabelTarget(saved: String? = null) {
+        context.getSharedPreferences(CustomLabelStore.FILE_NAME, android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        saved?.let { CustomLabelStore(context).put(customKey, it) }
+        target.className="android.widget.ImageButton"; target.text=null
+        target.packageName=customKey.packageName; target.viewIdResourceName=customKey.resourceName
+    }
+    private fun fields(view: View): List<EditText> = when(view) {
+        is EditText -> listOf(view)
+        is android.view.ViewGroup -> (0 until view.childCount).flatMap { fields(view.getChildAt(it)) }
+        else -> emptyList()
+    }
+    private fun choose(text: String) = buttons(dialog().window!!.decorView).first { it.text.toString()==text }.performClick()
+    @Test fun `Add editor stays in same overlay has input focus and allows keyboard`() {
+        customLabelTarget(); controller.open(); val original=dialog(); choose("Add label")
+        assertSame(original,dialog()); assertTrue(controller.isOpen)
+        val editor=fields(dialog().window!!.decorView).single()
+        assertEquals("",editor.text.toString()); assertEquals("Custom label",editor.hint.toString())
+        assertTrue(editor.hasFocus())
+        assertEquals(0,dialog().window!!.attributes.flags and WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        assertEquals(0,dialog().window!!.attributes.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        assertEquals(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,dialog().window!!.attributes.type)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(shadowOf(context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+            .isSoftInputVisible)
+        controller.cancel(); shadowOf(Looper.getMainLooper()).idle()
+        assertNull(CustomLabelStore(context).get(customKey))
+    }
+    @Test fun `Save uses original identity instead of editor focus and closes session once`() {
+        customLabelTarget(); controller.open(); choose("Add label")
+        val editor=fields(dialog().window!!.decorView).single(); editor.setText("  Share  ")
+        val editorNode=AccessibilityNodeInfo.obtain().apply {
+            packageName="editor.app"; viewIdResourceName="editor.app:id/input"
+        }
+        shadow(root).focused=editorNode; target.isAccessibilityFocused=false
+        val save=buttons(dialog().window!!.decorView).first { it.text.toString()=="Save" }
+        save.performClick(); save.performClick()
+        assertEquals("Share",CustomLabelStore(context).get(customKey))
+        assertNull(CustomLabelStore(context).get(CustomLabelKey("editor.app","editor.app:id/input")))
+        assertFalse(controller.isOpen); assertFalse(dialog().isShowing)
+        assertTrue(shadow(target).performedActions.isEmpty())
+        assertEquals(listOf("Label saved"),shadowOf(tts).spokenTextList)
+    }
+    @Test fun `Edit prepopulates and replaces saved label`() {
+        customLabelTarget("Share"); controller.open(); choose("Edit label")
+        val editor=fields(dialog().window!!.decorView).single()
+        assertEquals("Share",editor.text.toString()); editor.setText("Send"); choose("Save")
+        assertEquals("Send",CustomLabelStore(context).get(customKey))
+        assertEquals("Send, button",Reader(context).read(target))
+    }
+    @Test fun `editor Cancel changes nothing and safely returns through original session`() {
+        customLabelTarget("Share"); controller.open(); choose("Edit label")
+        fields(dialog().window!!.decorView).single().setText("Unsaved")
+        target.isAccessibilityFocused=false
+        dialog().getButton(DialogInterface.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("Share",CustomLabelStore(context).get(customKey))
+        assertFalse(controller.isOpen)
+        assertEquals(listOf(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS),shadow(target).performedActions)
+    }
+    @Test fun `empty editor Save stays open and stores nothing`() {
+        customLabelTarget(); controller.open(); choose("Add label")
+        val editor=fields(dialog().window!!.decorView).single(); editor.setText(" \n"); choose("Save")
+        assertTrue(controller.isOpen); assertEquals("Enter a label",editor.error.toString())
+        assertNull(CustomLabelStore(context).get(customKey)); controller.cancel()
+    }
+    @Test fun `changed original ID while editor open fails without storing`() {
+        customLabelTarget(); controller.open(); choose("Add label")
+        fields(dialog().window!!.decorView).single().setText("Share")
+        target.viewIdResourceName="example.app:id/other"; choose("Save")
+        assertNull(CustomLabelStore(context).get(customKey))
+        assertNull(CustomLabelStore(context).get(customKey.copy(resourceName="example.app:id/other")))
+        assertEquals(listOf("Action no longer available"),shadowOf(tts).spokenTextList)
+    }
+    @Test fun `Remove updates speech without performing app actions`() {
+        customLabelTarget("Share"); controller.open(); choose("Remove label")
+        assertNull(CustomLabelStore(context).get(customKey))
+        assertEquals("button",Reader(context).read(target))
+        assertTrue(shadow(target).performedActions.isEmpty())
+        assertEquals(listOf("Label removed"),shadowOf(tts).spokenTextList)
+    }
+    @Test fun `app provided button opens Add editor and saves fallback without replacing app speech`() {
+        customLabelTarget()
+        target.className="android.widget.Button"; target.text="App provided label"
+        controller.open(); val original=dialog()
+        assertTrue(buttons(original.window!!.decorView).any { it.isShown && it.text.toString()=="Add label" })
+        target.isAccessibilityFocused=false
+        val menuNode=AccessibilityNodeInfo.obtain(); shadow(root).focused=menuNode
+        choose("Add label")
+        assertSame(original,dialog()); assertTrue(original.isShowing); assertTrue(controller.isOpen)
+        val editor=fields(original.window!!.decorView).single()
+        assertEquals("",editor.text.toString())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(controller.isOpen); assertTrue(original.isShowing)
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+        editor.setText("User fallback"); choose("Save")
+        assertEquals("User fallback",CustomLabelStore(context).get(customKey))
+        assertEquals("App provided label, button",Reader(context).read(target))
+        assertEquals(listOf("Label saved"),shadowOf(tts).spokenTextList)
+        assertTrue(shadow(target).performedActions.isEmpty())
+        target.isAccessibilityFocused=true; shadow(root).focused=target.unwrap()
+        controller.open()
+        val visible=buttons(dialog().window!!.decorView).filter { it.isShown }.map { it.text.toString() }
+        assertTrue("Edit label" in visible); assertTrue("Remove label" in visible); assertFalse("Add label" in visible)
+        choose("Edit label")
+        assertEquals("User fallback",fields(dialog().window!!.decorView).single().text.toString())
+        controller.destroy()
+    }
+    @Test fun `app provided button editor rejects changed identity before opening with feedback`() {
+        customLabelTarget(); target.className="android.widget.Button"; target.text="App provided label"
+        controller.open()
+        target.viewIdResourceName="example.app:id/replaced"
+        choose("Add label")
+        assertFalse(controller.isOpen); assertFalse(dialog().isShowing)
+        assertEquals(listOf("Action no longer available"),shadowOf(tts).spokenTextList)
+        assertNull(CustomLabelStore(context).get(customKey))
+        assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    @Test fun `label editor survives original visibility loss and saves without replacing app speech`() {
+        customLabelTarget(); target.className="android.widget.Button"; target.text="App provided label"
+        controller.open(); choose("Add label"); val original=dialog()
+        shadowOf(Looper.getMainLooper()).idle()
+        target.isVisibleToUser=false
+        controller.onEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED))
+        assertTrue(controller.isOpen); assertTrue(original.isShowing)
+        fields(original.window!!.decorView).single().setText("User fallback"); choose("Save")
+        assertFalse(controller.isOpen); assertFalse(original.isShowing)
+        assertEquals("User fallback",CustomLabelStore(context).get(customKey))
+        target.isVisibleToUser=true
+        assertEquals("App provided label, button",Reader(context).read(target))
+        assertEquals(listOf("Label saved"),shadowOf(tts).spokenTextList)
+        assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    @Test fun `Edit editor also survives original visibility loss`() {
+        customLabelTarget("Share"); controller.open(); choose("Edit label")
+        target.isVisibleToUser=false
+        controller.onEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED))
+        assertTrue(controller.isOpen)
+        fields(dialog().window!!.decorView).single().setText("Send"); choose("Save")
+        assertEquals("Send",CustomLabelStore(context).get(customKey))
+        assertEquals(listOf("Label saved"),shadowOf(tts).spokenTextList)
+    }
+    @Test fun `visibility loss before editor opening still rejects Add`() {
+        customLabelTarget(); controller.open(); target.isVisibleToUser=false; choose("Add label")
+        assertFalse(controller.isOpen); assertNull(CustomLabelStore(context).get(customKey))
+        assertTrue(fields(dialog().window!!.decorView).isEmpty())
+    }
+    @Test fun `Cancel from obscured label editor does not restore invisible target`() {
+        customLabelTarget(); controller.open(); choose("Add label"); target.isVisibleToUser=false
+        target.isAccessibilityFocused=false; controller.cancel()
+        assertFalse(controller.isOpen); assertTrue(shadow(target).performedActions.isEmpty())
+        assertNull(CustomLabelStore(context).get(customKey))
+    }
+    @Test fun `removed target still closes obscured label editor`() {
+        customLabelTarget(); controller.open(); choose("Add label")
+        target.isVisibleToUser=false; shadow(target).setRefreshReturnValue(false)
+        controller.onEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED))
+        assertFalse(controller.isOpen); assertFalse(dialog().isShowing)
+        assertEquals(listOf("Target no longer available"),shadowOf(tts).spokenTextList)
+        assertNull(CustomLabelStore(context).get(customKey))
+    }
+    @Test fun `changed identity still closes obscured label editor`() {
+        customLabelTarget(); controller.open(); choose("Add label")
+        target.isVisibleToUser=false; target.viewIdResourceName="example.app:id/replaced"
+        controller.onEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED))
+        assertFalse(controller.isOpen); assertNull(CustomLabelStore(context).get(customKey))
+        assertNull(CustomLabelStore(context).get(customKey.copy(resourceName="example.app:id/replaced")))
+    }
+    @Test fun `changed active window still closes obscured label editor`() {
+        customLabelTarget(); controller.open(); choose("Add label"); target.isVisibleToUser=false
+        val otherWindow=AccessibilityWindowInfo.obtain(); shadowOf(otherWindow).setId(2)
+        shadowOf(root.unwrap()).setAccessibilityWindowInfo(otherWindow)
+        controller.onEvent(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOWS_CHANGED))
+        assertFalse(controller.isOpen); assertFalse(dialog().isShowing)
+        assertEquals(listOf("Target no longer available"),shadowOf(tts).spokenTextList)
+        assertNull(CustomLabelStore(context).get(customKey))
     }
 }

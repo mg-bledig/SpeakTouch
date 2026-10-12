@@ -32,6 +32,7 @@ import javax.inject.Inject
 class Reader @Inject constructor(
     private val context: Context
 ) {
+    private val customLabels = CustomLabelStore(context)
 
     fun read(
         node: AccessibilityNodeInfoCompat,
@@ -71,14 +72,26 @@ class Reader @Inject constructor(
         }
 
         val associatedLabels = associatedLabelContent(node, node.getAssociatedLabels(), contentLabels)
+        // Only fill a missing content slot. App text, hints, labels and grouped content win.
+        val hasOwnPrimaryContent = text?.isNotBlank() == true ||
+            (type !is Type.EditField && contentDescription?.isNotBlank() == true) ||
+            (isEditable && hintText?.isNotBlank() == true)
+        val customLabel = if (!hasOwnPrimaryContent && content.isNullOrBlank() && associatedLabels.isEmpty()) {
+            CustomLabelKey.from(node)?.let(customLabels::get)?.takeUnless { label ->
+                ancestorLabels.any { containsLabel(it, label) }
+            }
+        } else null
         spokenContent?.addAll(associatedLabels)
         spokenContent?.addAll(contentLabels)
+        customLabel?.let { spokenContent?.add(it) }
 
         buildList {
 
             addAll(associatedLabels)
 
-            if (content.isNotNullOrEmpty()) {
+            if (customLabel != null) {
+                add(customLabel)
+            } else if (content.isNotNullOrEmpty()) {
                 add(content)
             }
 

@@ -58,6 +58,8 @@ class SpeakTouchService : AccessibilityService () {
     override fun onServiceConnected() {
         super.onServiceConnected()
 
+        addFlags(AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             addFlags(AccessibilityServiceInfo.FLAG_ENABLE_ACCESSIBILITY_VOLUME,
                 AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS)

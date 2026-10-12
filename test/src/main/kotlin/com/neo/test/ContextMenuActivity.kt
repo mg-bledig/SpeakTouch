@@ -164,6 +164,58 @@ class ContextMenuActivity : AppCompatActivity() {
             if (multiLink.parent == null) rows.addView(multiLink, rows.indexOfChild(singleLink) + 1)
             multiLink.text = linkedText()
         }
+
+        label("Custom labels: A, B, shared C and D, then no ID")
+        fun unlabeled(idValue: Int, title: String): ImageButton {
+            var count = 0
+            val status = label("$title clicks: 0")
+            return ImageButton(this).apply {
+                id = idValue
+                setImageResource(android.R.drawable.ic_menu_share)
+                minimumHeight = (48 * resources.displayMetrics.density).toInt()
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                setOnClickListener { status.text = "$title clicks: ${++count}" }
+                rows.addView(this)
+            }
+        }
+        val share = unlabeled(R.id.custom_label_share, "Custom label A")
+        val shareStatus = rows.getChildAt(rows.indexOfChild(share) - 1)
+        unlabeled(R.id.custom_label_other, "Custom label B")
+        // These two deliberately have one resource ID: assigning either labels both.
+        unlabeled(R.id.custom_label_shared, "Shared label C")
+        unlabeled(R.id.custom_label_shared, "Shared label D")
+        unlabeled(View.NO_ID, "No ID")
+        button("App provided label") { }.id = R.id.custom_label_named
+        rows.addView(EditText(this).apply {
+            id = R.id.custom_label_password
+            hint = "Custom label password comparison"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        })
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            button("Sensitive label comparison") { }.apply {
+                id = R.id.custom_label_sensitive
+                setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
+            }
+        }
+        val changeShareId = Runnable {
+            share.id = R.id.custom_label_changed
+            share.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+        val removeShare = Runnable { rows.removeView(share) }
+        button("Change custom label A ID in 15 seconds") {
+            handler.postDelayed(changeShareId, 15000)
+        }
+        button("Remove custom label A in 15 seconds") {
+            handler.postDelayed(removeShare, 15000)
+        }
+        button("Restore custom label A") {
+            handler.removeCallbacks(changeShareId)
+            handler.removeCallbacks(removeShare)
+            share.id = R.id.custom_label_share
+            // Reinsert beside A's counter, not off-screen at the end of the ScrollView.
+            if (share.parent == null) rows.addView(share, rows.indexOfChild(shareStatus) + 1)
+        }
     }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); super.onDestroy() }
 }
