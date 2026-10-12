@@ -4,11 +4,13 @@ import android.content.Context
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import com.neo.speaktouch.R
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.neo.speaktouch.utils.copyableText
 
-internal enum class MenuOperation { CLICK, LONG_CLICK, PASTE, CLEAR, CHECK, ACTION }
-internal data class MenuCommand(val label: String, val actionId: Int,
+internal enum class MenuOperation { CLICK, LONG_CLICK, PASTE, CLEAR, CHECK, ACTION, COPY }
+internal data class MenuCommand(val label: String, val actionId: Int?,
     val operation: MenuOperation, val checked: Boolean? = null)
-internal enum class MenuResult { SUCCESS, TARGET_GONE, ACTION_GONE, FAILED }
+internal enum class MenuResult { SUCCESS, COPIED, COPY_UNAVAILABLE, COPY_FAILED, TARGET_GONE, ACTION_GONE, FAILED }
 
 /** A one-shot capability for the target captured before the overlay receives focus. */
 internal class ContextMenuSession(
@@ -16,7 +18,8 @@ internal class ContextMenuSession(
     private val snapshot: ActionSnapshot,
     val token: Long,
     private val windowValid: () -> Boolean,
-    private val context: Context
+    private val context: Context,
+    private val clipboard: TextClipboard = AndroidTextClipboard(context)
 ) {
     val windowId: Int = target.windowId
     private var active = true
@@ -34,9 +37,16 @@ internal class ContextMenuSession(
     fun execute(command: MenuCommand): MenuResult {
         if (!valid()) { active = false; return MenuResult.TARGET_GONE }
         active = false // Reject duplicate callbacks before invoking the provider.
-        if (command !in commands || !target.isEnabled ||
-            !target.actionList.any { it.id == command.actionId }) return MenuResult.ACTION_GONE
+        if (command !in commands || !target.isEnabled) return MenuResult.ACTION_GONE
+        if (command.operation == MenuOperation.COPY) {
+            val text = copyableText(AccessibilityNodeInfoCompat.wrap(target))
+                ?: return MenuResult.COPY_UNAVAILABLE
+            return if (clipboard.copy(text)) MenuResult.COPIED else MenuResult.COPY_FAILED
+        }
+        val actionId = command.actionId ?: return MenuResult.ACTION_GONE
+        if (!target.actionList.any { it.id == actionId }) return MenuResult.ACTION_GONE
         val eligible = when (command.operation) {
+            MenuOperation.COPY -> false // Direct clipboard path above.
             MenuOperation.CLICK -> target.isClickable
             MenuOperation.LONG_CLICK -> target.isLongClickable
             MenuOperation.PASTE, MenuOperation.CLEAR -> target.isEditable
@@ -52,7 +62,7 @@ internal class ContextMenuSession(
         val args = if (command.operation == MenuOperation.CLEAR) Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
         } else null
-        return if (target.performAction(command.actionId, args)) MenuResult.SUCCESS else MenuResult.FAILED
+        return if (target.performAction(actionId, args)) MenuResult.SUCCESS else MenuResult.FAILED
     }
     private fun buildCommands(): List<MenuCommand> {
         if (!target.isVisibleToUser || !target.isEnabled) return emptyList()
@@ -68,6 +78,8 @@ internal class ContextMenuSession(
         add(target.isCheckable, AccessibilityNodeInfo.ACTION_CLICK,
             if (target.isChecked) R.string.menu_uncheck else R.string.menu_check,
             MenuOperation.CHECK, target.isChecked)
+        if (copyableText(AccessibilityNodeInfoCompat.wrap(target)) != null)
+            result.add(MenuCommand(context.getString(R.string.menu_copy_text), null, MenuOperation.COPY))
         snapshot.supportedActions.forEach {
             result.add(MenuCommand(it.displayLabel!!, it.id, MenuOperation.ACTION))
         }

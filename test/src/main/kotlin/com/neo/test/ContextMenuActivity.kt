@@ -46,6 +46,10 @@ class ContextMenuActivity : AppCompatActivity() {
         }
         val filled = EditText(this).apply { setText("Filled field"); contentDescription = "Filled field" }
         button("Prepare Paste for filled field") { preparePaste(filled) }
+        button("Select first word in filled field") {
+            filled.requestFocus()
+            filled.setSelection(0, minOf(6, filled.length()))
+        }
         rows.addView(filled)
         val empty = EditText(this).apply { hint = "Empty field" }
         button("Prepare Paste for empty field") { preparePaste(empty) }
@@ -73,6 +77,45 @@ class ContextMenuActivity : AppCompatActivity() {
         button("Remove Action target in 15 seconds") {
             handler.postDelayed({ rows.removeView(target) }, 15000)
         }
+        label("Copy sample: café 👋, punctuation!")
+        TextView(this).apply {
+            contentDescription = "Description only"
+            minHeight = 64
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            ViewCompat.setScreenReaderFocusable(this, true)
+            rows.addView(this)
+        }
+        label("Visible text").contentDescription = "Preferred description"
+        rows.addView(EditText(this).apply {
+            hint = "Password field"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText("Secret test value")
+        })
+        if (android.os.Build.VERSION.SDK_INT >= 30) rows.addView(View(this).apply {
+            stateDescription = "Loading"
+            isFocusable = true
+            minimumHeight = 64
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        })
+        fun group(description: String?) {
+            rows.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                contentDescription = description
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                ViewCompat.setScreenReaderFocusable(this, true)
+                addView(TextView(this@ContextMenuActivity).apply { text = "Download" })
+                addView(TextView(this@ContextMenuActivity).apply { text = "Loading" })
+            })
+        }
+        group("Transfer")
+        group(null)
+        val verification = EditText(this).apply { hint = "Verification field" }
+        button("Focus verification field for Paste") {
+            // Keep the clipboard unchanged so the previous Copy can be verified.
+            verification.requestFocus()
+            verification.setSelection(verification.length())
+        }
+        rows.addView(verification)
     }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); super.onDestroy() }
 }

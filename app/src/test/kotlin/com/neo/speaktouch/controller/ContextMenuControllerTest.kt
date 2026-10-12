@@ -63,7 +63,7 @@ class ContextMenuControllerTest {
         controller.destroy()
     }
     @Test fun `empty command set provides feedback without opening`() {
-        target.isClickable=false; target.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+        target.text=null; target.isClickable=false; target.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
         controller.open()
         assertFalse(controller.isOpen)
         assertEquals(listOf("No actions available"),shadowOf(tts).spokenTextList)
@@ -131,5 +131,13 @@ class ContextMenuControllerTest {
         controller.cancel()
         assertFalse(controller.shouldInitializeFocus(event))
         assertTrue(controller.shouldInitializeFocus(event))
+    }
+    @Test fun `Copy text announces only concise success`() {
+        target.isClickable=false
+        target.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
+        controller.open()
+        buttons(dialog().window!!.decorView).first { it.text.toString()=="Copy text" }.performClick()
+        assertEquals(listOf("Copied"),shadowOf(tts).spokenTextList)
+        assertTrue(shadow(target).performedActions.isEmpty())
     }
 }

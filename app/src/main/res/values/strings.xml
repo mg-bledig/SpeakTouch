@@ -59,4 +59,8 @@
     <string name="menu_action_gone">Action no longer available</string>
     <string name="menu_target_gone">Target no longer available</string>
     <string name="menu_failed">Action failed</string>
+    <string name="menu_copy_text">Copy text</string>
+    <string name="menu_copied">Copied</string>
+    <string name="menu_copy_unavailable">Copy unavailable</string>
+    <string name="menu_copy_failed">Copy failed</string>
 </resources>

@@ -60,6 +60,9 @@ class ContextMenuController @Inject constructor(
                         MenuResult.TARGET_GONE -> feedback(R.string.menu_target_gone)
                         MenuResult.ACTION_GONE -> feedback(R.string.menu_action_gone)
                         MenuResult.FAILED -> feedback(R.string.menu_failed)
+                        MenuResult.COPIED -> feedback(R.string.menu_copied)
+                        MenuResult.COPY_UNAVAILABLE -> feedback(R.string.menu_copy_unavailable)
+                        MenuResult.COPY_FAILED -> feedback(R.string.menu_copy_failed)
                         MenuResult.SUCCESS -> Unit
                     }
                 }

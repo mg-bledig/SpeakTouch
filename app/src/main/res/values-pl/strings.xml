@@ -57,4 +57,8 @@
     <string name="menu_action_gone">Działanie niedostępne</string>
     <string name="menu_target_gone">Element niedostępny</string>
     <string name="menu_failed">Działanie nie powiodło się</string>
+    <string name="menu_copy_text">Kopiuj tekst</string>
+    <string name="menu_copied">Skopiowano</string>
+    <string name="menu_copy_unavailable">Kopiowanie niedostępne</string>
+    <string name="menu_copy_failed">Kopiowanie nie powiodło się</string>
 </resources>

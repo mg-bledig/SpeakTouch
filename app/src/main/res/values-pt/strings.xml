@@ -57,4 +57,8 @@
     <string name="menu_action_gone">Ação indisponível</string>
     <string name="menu_target_gone">Elemento indisponível</string>
     <string name="menu_failed">A ação falhou</string>
+    <string name="menu_copy_text">Copiar texto</string>
+    <string name="menu_copied">Copiado</string>
+    <string name="menu_copy_unavailable">Não é possível copiar</string>
+    <string name="menu_copy_failed">Falha ao copiar</string>
 </resources>
