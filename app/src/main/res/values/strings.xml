@@ -50,6 +50,14 @@
     <string name="menu_title">SpeakTouch menu</string>
     <string name="menu_cancel">Cancel</string>
     <string name="menu_links">Links</string>
+    <string name="menu_add_label">Add label</string>
+    <string name="menu_edit_label">Edit label</string>
+    <string name="menu_remove_label">Remove label</string>
+    <string name="menu_label_hint">Custom label</string>
+    <string name="menu_save">Save</string>
+    <string name="menu_label_empty">Enter a label</string>
+    <string name="menu_label_saved">Label saved</string>
+    <string name="menu_label_removed">Label removed</string>
     <string name="menu_click">Click</string>
     <string name="menu_long_click">Long click</string>
     <string name="menu_paste">Paste</string>

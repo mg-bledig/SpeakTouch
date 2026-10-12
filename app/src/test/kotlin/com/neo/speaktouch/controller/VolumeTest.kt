@@ -233,6 +233,7 @@ class VolumeTest {
         service.serviceInfo = AccessibilityServiceInfo().apply { flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
         SpeakTouchService::class.java.getDeclaredMethod("onServiceConnected").apply { isAccessible = true }.invoke(service)
         var expected = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+            AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
             AccessibilityServiceInfo.FLAG_ENABLE_ACCESSIBILITY_VOLUME or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         if (Build.VERSION.SDK_INT >= 30) expected = expected or AccessibilityServiceInfo.FLAG_REQUEST_MULTI_FINGER_GESTURES
         if (Build.VERSION.SDK_INT >= 31) expected = expected or AccessibilityServiceInfo.FLAG_REQUEST_2_FINGER_PASSTHROUGH
@@ -258,13 +259,14 @@ class VolumeTest {
         val config = factory.newDocumentBuilder().parse(File("src/main/res/xml/accessibility_service_config.xml"))
         assertEquals("true", config.documentElement.getAttributeNS(namespace, "canRequestFilterKeyEvents"))
     }
-    @Test @Config(sdk = [25]) fun `API 25 passes all volume events through and requests no new flags`() {
+    @Test @Config(sdk = [25]) fun `API 25 passes all volume events through and only adds resource ID reporting`() {
         say(); assertFalse(down()); assertFalse(down(repeat = 1)); assertFalse(up())
         assertFalse(down(KeyEvent.KEYCODE_VOLUME_DOWN)); assertFalse(up(KeyEvent.KEYCODE_VOLUME_DOWN))
         speech.togglePauseResume(); assertFalse(down(time = 20)); assertFalse(up(time = 20)); assertTrue(calls.isEmpty())
         val service = SpeakTouchService().apply { volumeController = volume }
         service.serviceInfo = AccessibilityServiceInfo().apply { flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
         SpeakTouchService::class.java.getDeclaredMethod("onServiceConnected").apply { isAccessible = true }.invoke(service)
-        assertEquals(AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS, service.serviceInfo.flags)
+        assertEquals(AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+            AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS, service.serviceInfo.flags)
     }
 }

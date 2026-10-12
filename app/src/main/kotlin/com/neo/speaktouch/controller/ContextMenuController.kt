@@ -1,15 +1,19 @@
 package com.neo.speaktouch.controller
 
 import android.app.AlertDialog
+import android.content.Context
 import android.os.SystemClock
+import android.text.InputType
 import android.view.ContextThemeWrapper
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.view.inputmethod.InputMethodManager
 import com.neo.speaktouch.R
 import com.neo.speaktouch.model.Text
 import dagger.hilt.android.scopes.ServiceScoped
@@ -59,6 +63,8 @@ class ContextMenuController @Inject constructor(
                 MenuResult.COPIED -> feedback(R.string.menu_copied)
                 MenuResult.COPY_UNAVAILABLE -> feedback(R.string.menu_copy_unavailable)
                 MenuResult.COPY_FAILED -> feedback(R.string.menu_copy_failed)
+                MenuResult.LABEL_SAVED -> feedback(R.string.menu_label_saved)
+                MenuResult.LABEL_REMOVED -> feedback(R.string.menu_label_removed)
                 MenuResult.SUCCESS, MenuResult.LINK_DISPATCHED -> Unit
             }
         }
@@ -86,6 +92,49 @@ class ContextMenuController @Inject constructor(
                             })
                         }
                         focusFirst(rows.getChildAt(0) as Button)
+                    } else if (command.operation == MenuOperation.ADD_LABEL || command.operation == MenuOperation.EDIT_LABEL) {
+                        if (!captured.openLabelEditor(command)) {
+                            release(false); feedback(R.string.menu_action_gone)
+                            return@setOnClickListener
+                        }
+                        // Like Links, the editor stays in this overlay and original target session.
+                        rows.removeAllViews()
+                        dialog?.setTitle(command.label)
+                        val editor = EditText(context).apply {
+                            hint = context.getString(R.string.menu_label_hint)
+                            inputType = InputType.TYPE_CLASS_TEXT
+                            setSingleLine(true)
+                            setText(if (command.operation == MenuOperation.EDIT_LABEL) captured.customLabel else "")
+                            setSelection(length())
+                        }
+                        rows.addView(editor)
+                        rows.addView(Button(context).apply {
+                            setText(R.string.menu_save)
+                            setOnClickListener save@{
+                                if (session !== captured) return@save
+                                val text = editor.text.toString()
+                                if (text.isBlank()) {
+                                    editor.error = context.getString(R.string.menu_label_empty)
+                                    return@save
+                                }
+                                execute { captured.saveLabel(command, text) }
+                            }
+                        })
+                        dialog?.window?.apply {
+                            // The original button-only dialog had no text input. Remove the IME
+                            // exclusion it acquired before inserting a real editor dynamically.
+                            clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
+                                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                        }
+                        editor.requestFocus()
+                        editor.post {
+                            if (session === captured && editor.parent === rows) {
+                                editor.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null)
+                                (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                                    .showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
+                            }
+                        }
                     } else {
                         execute { captured.execute(command) }
                     }
@@ -132,7 +181,7 @@ class ContextMenuController @Inject constructor(
         val ownerChanged = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.windowId == captured.windowId &&
             event.packageName?.toString() != service.getOrThrow().packageName
-        if (ownerChanged || !captured.valid()) {
+        if (ownerChanged || !captured.validForCurrentView()) {
             release(false); feedback(R.string.menu_target_gone)
         }
     }
@@ -157,5 +206,7 @@ class ContextMenuController @Inject constructor(
                 it.isActive && it.id != id }) return false
         return windows.any { it.id == id && it.root != null }
     }
-    private fun feedback(id: Int) = speech.speak(Text(id))
+    private fun feedback(id: Int) {
+        speech.speak(Text(id))
+    }
 }

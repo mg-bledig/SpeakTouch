@@ -48,6 +48,14 @@
     <string name="menu_title">Menu SpeakTouch</string>
     <string name="menu_cancel">Anuluj</string>
     <string name="menu_links">Linki</string>
+    <string name="menu_add_label">Dodaj etykietę</string>
+    <string name="menu_edit_label">Edytuj etykietę</string>
+    <string name="menu_remove_label">Usuń etykietę</string>
+    <string name="menu_label_hint">Własna etykieta</string>
+    <string name="menu_save">Zapisz</string>
+    <string name="menu_label_empty">Wpisz etykietę</string>
+    <string name="menu_label_saved">Zapisano etykietę</string>
+    <string name="menu_label_removed">Usunięto etykietę</string>
     <string name="menu_click">Kliknij</string>
     <string name="menu_long_click">Długie kliknięcie</string>
     <string name="menu_paste">Wklej</string>
