@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import com.neo.speaktouch.service.SpeakTouchService
+import com.neo.speaktouch.SettingsActivity
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.*
@@ -51,6 +52,17 @@ class AccessibilityCapabilityTest {
         if (Build.VERSION.SDK_INT >= 31) assertTrue(info.isAccessibilityTool)
     }
 
+    @Test fun `Android parsed metadata exposes exported settings activity without a launcher`() {
+        val info = parsedInfo()
+        assertEquals(SettingsActivity::class.java.name, info.settingsActivityName)
+        val component = android.content.ComponentName(context.packageName, info.settingsActivityName)
+        val activity = context.packageManager.getActivityInfo(component, 0)
+        assertTrue(activity.exported)
+        val launchers = context.packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(context.packageName), 0)
+        assertTrue(launchers.none { it.activityInfo.name == SettingsActivity::class.java.name })
+    }
+
     @Test fun `every source resource replacement explicitly declares key capability`() {
         val resources = File("src/main/res")
         val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
@@ -62,6 +74,7 @@ class AccessibilityCapabilityTest {
             val root = factory.newDocumentBuilder().parse(config).documentElement
             assertEquals(config.path, "accessibility-service", root.nodeName)
             assertEquals(config.path, "true", root.getAttributeNS(namespace, "canRequestFilterKeyEvents"))
+            assertEquals(config.path, SettingsActivity::class.java.name, root.getAttributeNS(namespace, "settingsActivity"))
         }
     }
 }

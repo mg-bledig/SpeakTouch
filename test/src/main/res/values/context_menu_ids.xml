@@ -8,4 +8,8 @@
     <item name="custom_label_password" type="id" />
     <item name="custom_label_sensitive" type="id" />
     <item name="custom_label_changed" type="id" />
+    <item name="sendButton" type="id" />
+    <item name="send_button" type="id" />
+    <item name="IcNotificationBtn" type="id" />
+    <item name="item2Button" type="id" />
 </resources>

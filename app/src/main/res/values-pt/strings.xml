@@ -17,6 +17,10 @@
     -->
 
 <resources>
+    <string name="menu_settings">Configurações</string>
+    <string name="settings_title">Configurações do SpeakTouch</string>
+    <string name="settings_speak_ids">Falar IDs</string>
+    <string name="settings_speak_ids_summary">Falar nomes de recursos de controles sem nome ou rótulo personalizado.</string>
     <!-- type -->
     <string name="text_image_type">imagem</string>
     <string name="text_switch_type">interruptor</string>

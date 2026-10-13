@@ -17,6 +17,10 @@
     -->
 
 <resources>
+    <string name="menu_settings">Ustawienia</string>
+    <string name="settings_title">Ustawienia SpeakTouch</string>
+    <string name="settings_speak_ids">Odczytuj identyfikatory</string>
+    <string name="settings_speak_ids_summary">Odczytuj nazwy zasobów kontrolek bez nazwy lub własnej etykiety.</string>
     <!-- type -->
     <string name="text_image_type">obraz</string>
     <string name="text_switch_type">przełącznik</string>
