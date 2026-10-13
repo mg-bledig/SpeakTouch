@@ -3,6 +3,7 @@ package com.neo.speaktouch.controller
 import android.accessibilityservice.AccessibilityService
 import android.app.AlertDialog
 import android.content.DialogInterface
+import android.content.Intent
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.view.View
@@ -13,6 +14,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.neo.speaktouch.SettingsActivity
 import com.neo.speaktouch.intercepter.event.CallbackInterceptor
 import com.neo.speaktouch.intercepter.gesture.GestureInterceptor
 import com.neo.speaktouch.utils.Reader
@@ -69,11 +71,15 @@ class ContextMenuControllerTest {
         assertTrue(shadowOf(tts).spokenTextList.isEmpty())
         controller.destroy()
     }
-    @Test fun `empty command set provides feedback without opening`() {
+    @Test fun `empty app command set still offers Settings without changing the target`() {
         target.text=null; target.isClickable=false; target.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
         controller.open()
-        assertFalse(controller.isOpen)
-        assertEquals(listOf("No actions available"),shadowOf(tts).spokenTextList)
+        assertTrue(controller.isOpen)
+        assertEquals(listOf("Settings", "Cancel"), buttons(dialog().window!!.decorView)
+            .filter { it.isShown }.map { it.text.toString() })
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+        assertTrue(shadow(target).performedActions.isEmpty())
+        controller.cancel()
     }
     @Test fun `Cancel dismisses and restores original when safe`() {
         controller.open(); val old=dialog(); target.isAccessibilityFocused=false
@@ -107,6 +113,46 @@ class ContextMenuControllerTest {
         is android.widget.Button -> listOf(view)
         is android.view.ViewGroup -> (0 until view.childCount).flatMap { buttons(view.getChildAt(it)) }
         else -> emptyList()
+    }
+    @Test fun `Settings follows existing app commands in the main menu`() {
+        controller.open()
+        assertEquals(listOf("Click", "Settings", "Cancel"), buttons(dialog().window!!.decorView)
+            .filter { it.isShown }.map { it.text.toString() })
+        controller.destroy()
+    }
+    @Test fun `Settings launches local activity once without refreshing or acting on app target`() {
+        controller.open(); val originalDialog = dialog()
+        val settings = buttons(originalDialog.window!!.decorView).first { it.text.toString() == "Settings" }
+        val menuNode = AccessibilityNodeInfo.obtain(); shadow(root).focused = menuNode
+        target.isAccessibilityFocused = false
+        shadow(target).onRefresh = { fail("Settings must not revalidate the retained app target"); false }
+        settings.performClick(); settings.performClick()
+        val intent = shadowOf(service).nextStartedActivity
+        assertNotNull(intent)
+        assertEquals(SettingsActivity::class.java.name, intent.component!!.className)
+        assertEquals(service.packageName, intent.component!!.packageName)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
+        assertNull(shadowOf(service).nextStartedActivity)
+        assertFalse(controller.isOpen); assertFalse(originalDialog.isShowing)
+        assertTrue(shadow(target).performedActions.isEmpty())
+        val menuShadow: SliderNodeShadow = Shadow.extract(menuNode)
+        assertTrue(menuShadow.performedActions.isEmpty())
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+    }
+    @Test fun `cancelled Settings row cannot launch later`() {
+        controller.open()
+        val settings = buttons(dialog().window!!.decorView).first { it.text.toString() == "Settings" }
+        controller.cancel(); settings.performClick()
+        assertNull(shadowOf(service).nextStartedActivity)
+        assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    @Test fun `replaced Settings row cannot launch from an old session`() {
+        controller.open()
+        val settings = buttons(dialog().window!!.decorView).first { it.text.toString() == "Settings" }
+        controller.open(); settings.performClick()
+        assertNull(shadowOf(service).nextStartedActivity)
+        assertTrue(controller.isOpen)
+        controller.destroy()
     }
     @Test fun `selecting Click invokes original once without reread or restoration`() {
         shadow(target).setOnPerformActionListener { _,_ -> true }

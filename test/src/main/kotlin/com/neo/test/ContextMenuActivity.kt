@@ -216,6 +216,12 @@ class ContextMenuActivity : AppCompatActivity() {
             // Reinsert beside A's counter, not off-screen at the end of the ScrollView.
             if (share.parent == null) rows.addView(share, rows.indexOfChild(shareStatus) + 1)
         }
+        // Compare literal ID pronunciation without adding names to the controls.
+        label("ID speech pronunciation")
+        unlabeled(R.id.sendButton, "sendButton")
+        unlabeled(R.id.send_button, "send_button")
+        unlabeled(R.id.IcNotificationBtn, "IcNotificationBtn")
+        unlabeled(R.id.item2Button, "item2Button")
     }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); super.onDestroy() }
 }

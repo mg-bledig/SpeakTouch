@@ -23,6 +23,11 @@
         android:icon="@null"
         android:memtagMode="async">
 
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="@string/settings_title" />
+
         <service
             android:name=".service.SpeakTouchService"
             android:exported="true"

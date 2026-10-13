@@ -33,6 +33,7 @@ class Reader @Inject constructor(
     private val context: Context
 ) {
     private val customLabels = CustomLabelStore(context)
+    private val preferences = SpeechPreferences(context)
 
     fun read(
         node: AccessibilityNodeInfoCompat,
@@ -76,14 +77,22 @@ class Reader @Inject constructor(
         val hasOwnPrimaryContent = text?.isNotBlank() == true ||
             (type !is Type.EditField && contentDescription?.isNotBlank() == true) ||
             (isEditable && hintText?.isNotBlank() == true)
-        val customLabel = if (!hasOwnPrimaryContent && content.isNullOrBlank() && associatedLabels.isEmpty()) {
-            CustomLabelKey.from(node)?.let(customLabels::get)?.takeUnless { label ->
+        val needsName = !hasOwnPrimaryContent && content.isNullOrBlank() && associatedLabels.isEmpty()
+        val savedCustomLabel = if (needsName) CustomLabelKey.from(node)?.let(customLabels::get) else null
+        val customLabel = savedCustomLabel?.takeUnless { label ->
+            ancestorLabels.any { containsLabel(it, label) }
+        }
+        // A stored custom label suppresses IDs even when its text is already represented
+        // in a grouped ancestor and duplicate-label suppression omits it here.
+        val idLabel = if (needsName && savedCustomLabel == null && preferences.speakIds) {
+            ResourceIdDescription.from(node)?.takeUnless { label ->
                 ancestorLabels.any { containsLabel(it, label) }
             }
         } else null
         spokenContent?.addAll(associatedLabels)
         spokenContent?.addAll(contentLabels)
         customLabel?.let { spokenContent?.add(it) }
+        idLabel?.let { spokenContent?.add(it) }
 
         buildList {
 
@@ -91,6 +100,8 @@ class Reader @Inject constructor(
 
             if (customLabel != null) {
                 add(customLabel)
+            } else if (idLabel != null) {
+                add(idLabel)
             } else if (content.isNotNullOrEmpty()) {
                 add(content)
             }

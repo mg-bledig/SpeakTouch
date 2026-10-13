@@ -2,6 +2,8 @@ package com.neo.speaktouch.controller
 
 import android.app.AlertDialog
 import android.content.Context
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.SystemClock
 import android.text.InputType
 import android.view.ContextThemeWrapper
@@ -15,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.view.inputmethod.InputMethodManager
 import com.neo.speaktouch.R
+import com.neo.speaktouch.SettingsActivity
 import com.neo.speaktouch.model.Text
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
@@ -47,7 +50,6 @@ class ContextMenuController @Inject constructor(
         val captured = ContextMenuSession(target, snapshot, ++nextToken,
             { windowValid(ownerWindow) }, service.getOrThrow())
         if (!captured.valid()) { feedback(R.string.menu_target_gone); return }
-        if (captured.commands.isEmpty()) { captured.invalidate(); feedback(R.string.menu_empty); return }
         session = captured
         val context = ContextThemeWrapper(service.getOrThrow(), android.R.style.Theme_Material_Light_Dialog_Alert)
         val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -141,6 +143,24 @@ class ContextMenuController @Inject constructor(
                 }
                 rows.addView(this)
             }
+        } + Button(context).apply {
+            setText(R.string.menu_settings)
+            setOnClickListener {
+                if (session !== captured) return@setOnClickListener
+                // A SpeakTouch command: release the app capability without executing or
+                // refreshing its target, and do not restore focus before switching windows.
+                release(false)
+                val serviceContext = service.getOrThrow()
+                try {
+                    serviceContext.startActivity(Intent(serviceContext, SettingsActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: ActivityNotFoundException) {
+                    feedback(R.string.menu_failed)
+                } catch (_: SecurityException) {
+                    feedback(R.string.menu_failed)
+                }
+            }
+            rows.addView(this)
         }
         val overlay = AlertDialog.Builder(context)
             .setTitle(R.string.menu_title)
