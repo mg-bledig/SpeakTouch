@@ -21,6 +21,8 @@ import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.view.ContextThemeWrapper
 import android.view.WindowManager
@@ -42,16 +44,21 @@ import javax.inject.Inject
 class ContextMenuController @Inject constructor(
     private val service: ServiceController,
     private val actions: ActionController,
-    private val speech: SpeechController
+    private val speech: SpeechController,
+    private val screenCurtainController: ScreenCurtainController? = null
 ) {
     private var dialog: AlertDialog? = null
     private var session: ContextMenuSession? = null
     private var nextToken = 0L
+    private val curtainFeedbackHandler = Handler(Looper.getMainLooper())
+    private var pendingCurtainFeedback: Runnable? = null
+    private var curtainFeedbackIssuedAt = 0L
     private var closingWindowId: Int? = null
     private var closingUntil = 0L
-    val isOpen: Boolean get() = session != null
+    val isOpen: Boolean get() = dialog != null
 
     fun open() {
+        cancelCurtainFeedback()
         // A second invocation from inside our overlay must never capture a menu row.
         if (isOpen && service.getFocused()?.windowId != session?.windowId) {
             cancel(); return
@@ -59,18 +66,18 @@ class ContextMenuController @Inject constructor(
         release(false)
         val target = service.getFocused()
         val snapshot = actions.discover()
-        if (target == null || snapshot == null || !snapshot.matches(target)) {
-            feedback(R.string.menu_target_gone); return
-        }
-        val ownerWindow = target.windowId
-        val captured = ContextMenuSession(target, snapshot, ++nextToken,
-            { windowValid(ownerWindow) }, service.getOrThrow())
-        if (!captured.valid()) { feedback(R.string.menu_target_gone); return }
+        val menuToken = ++nextToken
+        val captured = if (target != null && snapshot != null && snapshot.matches(target)) {
+            val ownerWindow = target.windowId
+            ContextMenuSession(target, snapshot, menuToken,
+                { windowValid(ownerWindow) }, service.getOrThrow()).takeIf { it.valid() }
+        } else null
         session = captured
+        fun currentMenu() = dialog != null && nextToken == menuToken
         val context = ContextThemeWrapper(service.getOrThrow(), android.R.style.Theme_Material_Light_Dialog_Alert)
         val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         fun execute(operation: () -> MenuResult) {
-            if (session !== captured) return
+            if (!currentMenu() || captured == null || session !== captured) return
             rememberClosing(captured)
             session = null
             dialog?.dismiss(); dialog = null
@@ -87,14 +94,14 @@ class ContextMenuController @Inject constructor(
             }
         }
         fun focusFirst(button: Button) = button.post {
-            if (session === captured && button.parent === rows) button.performAccessibilityAction(
+            if (currentMenu() && session === captured && button.parent === rows) button.performAccessibilityAction(
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null)
         }
-        val buttons = captured.commands.map { command ->
+        val buttons = captured?.let { captured -> captured.commands.map { command ->
             Button(context).apply {
                 text = command.label
                 setOnClickListener {
-                    if (session !== captured) return@setOnClickListener
+                    if (!currentMenu() || session !== captured) return@setOnClickListener
                     if (command.operation == MenuOperation.LINKS) {
                         if (!captured.valid()) {
                             release(false); feedback(R.string.menu_target_gone)
@@ -129,7 +136,7 @@ class ContextMenuController @Inject constructor(
                         rows.addView(Button(context).apply {
                             setText(R.string.menu_save)
                             setOnClickListener save@{
-                                if (session !== captured) return@save
+                                if (!currentMenu() || session !== captured) return@save
                                 val text = editor.text.toString()
                                 if (text.isBlank()) {
                                     editor.error = context.getString(R.string.menu_label_empty)
@@ -159,10 +166,10 @@ class ContextMenuController @Inject constructor(
                 }
                 rows.addView(this)
             }
-        } + Button(context).apply {
+        } }.orEmpty() + Button(context).apply {
             setText(R.string.menu_settings)
             setOnClickListener {
-                if (session !== captured) return@setOnClickListener
+                if (!currentMenu()) return@setOnClickListener
                 // A SpeakTouch command: release the app capability without executing or
                 // refreshing its target, and do not restore focus before switching windows.
                 release(false)
@@ -178,6 +185,16 @@ class ContextMenuController @Inject constructor(
             }
             rows.addView(this)
         }
+        Button(context).apply {
+            setText(R.string.screen_curtain)
+            setOnClickListener {
+                if (!currentMenu()) return@setOnClickListener
+                release(true)
+                // State changes now; only feedback waits for asynchronous menu/focus events.
+                screenCurtainController?.toggle { queueCurtainFeedback(it, target?.windowId) }
+            }
+            rows.addView(this)
+        }
         val overlay = AlertDialog.Builder(context)
             .setTitle(R.string.menu_title)
             .setView(ScrollView(context).apply { addView(rows) })
@@ -186,7 +203,7 @@ class ContextMenuController @Inject constructor(
                 window?.setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
                 setOnCancelListener { cancel() }
                 setOnDismissListener {
-                    if (session === captured) release(false)
+                    if (currentMenu()) release(false)
                 }
                 setOnShowListener {
                     focusFirst(buttons.first())
@@ -195,24 +212,46 @@ class ContextMenuController @Inject constructor(
         dialog = overlay
         try {
             overlay.show()
+            screenCurtainController?.coverNewWindow()
         } catch (_: WindowManager.BadTokenException) {
             release(false)
             feedback(R.string.menu_failed)
         }
     }
 
-    fun cancel() = release(true)
-    fun destroy() = release(false)
+    fun cancel() { cancelCurtainFeedback(); release(true) }
+    fun destroy() { cancelCurtainFeedback(); release(false) }
     private fun release(restore: Boolean) {
         val old = session
         old?.let(::rememberClosing)
         session = null
-        dialog?.dismiss(); dialog = null
+        val oldDialog = dialog
+        dialog = null
+        oldDialog?.dismiss()
         if (restore) old?.cancel() else old?.invalidate()
     }
 
     /** Overlay/IME events are not application transitions. Validate the captured owner instead. */
     fun onEvent(event: AccessibilityEvent) {
+        pendingCurtainFeedback?.let { pending ->
+            when (event.eventType) {
+                AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
+                AccessibilityEvent.TYPE_GESTURE_DETECTION_START -> {
+                    if (event.eventTime > curtainFeedbackIssuedAt) cancelCurtainFeedback()
+                }
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED,
+                AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED,
+                AccessibilityEvent.TYPE_VIEW_FOCUSED,
+                AccessibilityEvent.TYPE_TOUCH_INTERACTION_END -> {
+                    // A late restoration event may flush speech or finish the activation touch.
+                    // Run after the last such event, never in front of SpeechInterceptor.
+                    curtainFeedbackHandler.removeCallbacks(pending)
+                    curtainFeedbackHandler.postDelayed(pending, CURTAIN_FEEDBACK_SETTLE_MS)
+                }
+            }
+        }
         val captured = session ?: return
         val ownerChanged = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.windowId == captured.windowId &&
@@ -241,6 +280,31 @@ class ContextMenuController @Inject constructor(
         if (windows.any { it.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
                 it.isActive && it.id != id }) return false
         return windows.any { it.id == id && it.root != null }
+    }
+    private fun queueCurtainFeedback(id: Int, ownerWindow: Int?) {
+        cancelCurtainFeedback()
+        curtainFeedbackIssuedAt = SystemClock.uptimeMillis()
+        val pending = Runnable {
+            pendingCurtainFeedback = null
+            val currentWindow = service.getRoot()?.windowId
+            val stateMatches = when (id) {
+                R.string.screen_curtain_on -> screenCurtainController?.isEnabled == true
+                R.string.screen_curtain_off -> screenCurtainController?.isEnabled == false
+                else -> true
+            }
+            if (stateMatches && !isOpen && (ownerWindow == null || currentWindow == null || currentWindow == ownerWindow))
+                feedback(id)
+        }
+        pendingCurtainFeedback = pending
+        curtainFeedbackHandler.postDelayed(pending, CURTAIN_FEEDBACK_SETTLE_MS)
+    }
+    private fun cancelCurtainFeedback() {
+        pendingCurtainFeedback?.let(curtainFeedbackHandler::removeCallbacks)
+        pendingCurtainFeedback = null
+    }
+    private companion object {
+        // Binder-delivered focus/window restoration is asynchronous to Dialog.dismiss().
+        const val CURTAIN_FEEDBACK_SETTLE_MS = 150L
     }
     private fun feedback(id: Int) {
         speech.speak(Text(id))

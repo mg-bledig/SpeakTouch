@@ -91,7 +91,7 @@ class ContextMenuControllerTest {
         target.text=null; target.isClickable=false; target.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK)
         controller.open()
         assertTrue(controller.isOpen)
-        assertEquals(listOf("Settings", "Cancel"), buttons(dialog().window!!.decorView)
+        assertEquals(listOf("Settings", "Screen Curtain", "Cancel"), buttons(dialog().window!!.decorView)
             .filter { it.isShown }.map { it.text.toString() })
         assertTrue(shadowOf(tts).spokenTextList.isEmpty())
         assertTrue(shadow(target).performedActions.isEmpty())
@@ -125,6 +125,161 @@ class ContextMenuControllerTest {
         assertTrue(shadowOf(tts).spokenTextList.isNotEmpty())
         assertFalse(controller.isOpen)
     }
+    @Test fun `global commands remain available with no focused app node`() {
+        shadow(root).focused = null
+        controller.open()
+        assertTrue(controller.isOpen)
+        assertEquals(listOf("Settings", "Screen Curtain", "Cancel"), buttons(dialog().window!!.decorView)
+            .filter { it.isShown }.map { it.text.toString() })
+        buttons(dialog().window!!.decorView).first { it.text.toString() == "Settings" }.performClick()
+        assertEquals(SettingsActivity::class.java.name, shadowOf(service).nextStartedActivity.component!!.className)
+        assertTrue(shadow(target).performedActions.isEmpty())
+    }
+    @Test fun `invalid initial app target gets global commands without app commands`() {
+        shadow(target).setRefreshReturnValue(false)
+        controller.open()
+        assertEquals(listOf("Settings", "Screen Curtain", "Cancel"), buttons(dialog().window!!.decorView)
+            .filter { it.isShown }.map { it.text.toString() })
+        assertTrue(shadow(target).performedActions.isEmpty())
+        controller.cancel()
+    }
+    @Test fun `curtain command toggles with removed target and rejects stale row callbacks`() {
+        val curtain = ScreenCurtainController(service, speech)
+        var attached = false
+        curtain.window = object : CurtainWindow {
+            override fun attach() { attached = true }
+            override fun remove() { attached = false }
+            override fun resize() = Unit
+            override fun raise() = Unit
+        }
+        controller = ContextMenuController(ServiceController(service),
+            ActionController(ServiceController(service), context), speech, curtain)
+        controller.open()
+        val button = buttons(dialog().window!!.decorView).first { it.text.toString() == "Screen Curtain" }
+        shadow(target).setRefreshReturnValue(false)
+        button.performClick(); button.performClick()
+        assertTrue(attached); assertTrue(curtain.isEnabled)
+        assertFalse(controller.isOpen)
+        assertTrue(shadow(target).performedActions.isEmpty())
+        curtain.destroy()
+    }
+    @Test fun `curtain can turn off through menu when no app window exists`() {
+        val curtain = ScreenCurtainController(service, speech)
+        curtain.window = object : CurtainWindow {
+            override fun attach() = Unit
+            override fun remove() = Unit
+            override fun resize() = Unit
+            override fun raise() = Unit
+        }
+        curtain.enable()
+        service.root = null
+        controller = ContextMenuController(ServiceController(service),
+            ActionController(ServiceController(service), context), speech, curtain)
+        controller.open()
+        buttons(dialog().window!!.decorView).first { it.text.toString() == "Screen Curtain" }.performClick()
+        assertFalse(curtain.isEnabled); assertFalse(controller.isOpen)
+        assertTrue(shadow(target).performedActions.isEmpty())
+        curtain.destroy()
+    }
+    private fun curtainMenu(initiallyOn: Boolean = false): ScreenCurtainController {
+        val curtain = ScreenCurtainController(service, speech)
+        curtain.window = object : CurtainWindow {
+            override fun attach() = Unit
+            override fun remove() = Unit
+            override fun resize() = Unit
+            override fun raise() = Unit
+        }
+        if (initiallyOn) curtain.enable()
+        controller = ContextMenuController(ServiceController(service),
+            ActionController(ServiceController(service), context), speech, curtain)
+        return curtain
+    }
+    private fun chooseCurtain() = buttons(dialog().window!!.decorView)
+        .first { it.text.toString() == "Screen Curtain" }.performClick()
+    private fun restorationSpeech() {
+        target.isAccessibilityFocused = true
+        val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+        shadowOf(event).setSourceNode(target.unwrap())
+        controller.onEvent(event)
+        com.neo.speaktouch.intercepter.event.SpeechInterceptor(speech).handle(event)
+    }
+    private fun waitForCurtainFeedback() = shadowOf(Looper.getMainLooper())
+        .idleFor(java.time.Duration.ofMillis(150))
+    @Test fun `curtain ON announcement follows dismissal and restored node speech once`() {
+        val curtain = curtainMenu()
+        controller.open(); val menu = dialog(); target.isAccessibilityFocused = false
+        chooseCurtain()
+        assertFalse(menu.isShowing); assertFalse(controller.isOpen); assertTrue(curtain.isEnabled)
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+        assertEquals(listOf(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), shadow(target).performedActions)
+        restorationSpeech()
+        assertTrue(shadowOf(tts).spokenTextList.last().contains("Target"))
+        waitForCurtainFeedback()
+        assertEquals("Screen curtain on", shadowOf(tts).spokenTextList.last())
+        assertEquals(1, shadowOf(tts).spokenTextList.count { it == "Screen curtain on" })
+        waitForCurtainFeedback()
+        assertEquals(1, shadowOf(tts).spokenTextList.count { it == "Screen curtain on" })
+        curtain.destroy()
+    }
+    @Test fun `curtain OFF announcement follows restored speech and late window event`() {
+        val curtain = curtainMenu(initiallyOn = true)
+        val previous = shadowOf(tts).spokenTextList.size
+        controller.open(); target.isAccessibilityFocused = false; chooseCurtain()
+        assertFalse(curtain.isEnabled)
+        assertEquals(previous, shadowOf(tts).spokenTextList.size)
+        restorationSpeech()
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
+        assertFalse(shadowOf(tts).spokenTextList.contains("Screen curtain off"))
+        val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        // The timer starts inside onEvent, not after both event handlers return.
+        // Anchor the assertions to that deadline rather than adding 149 ms later.
+        val announcementDeadline = android.os.SystemClock.uptimeMillis() + 150
+        controller.onEvent(event)
+        com.neo.speaktouch.intercepter.event.SpeechInterceptor(speech).handle(event)
+        val mainLooper = shadowOf(Looper.getMainLooper())
+        val beforeDeadline = announcementDeadline - 1
+        mainLooper.idleFor(java.time.Duration.ofMillis(beforeDeadline - android.os.SystemClock.uptimeMillis()))
+        assertEquals(beforeDeadline, android.os.SystemClock.uptimeMillis())
+        assertFalse(shadowOf(tts).spokenTextList.contains("Screen curtain off"))
+        mainLooper.idleFor(java.time.Duration.ofMillis(announcementDeadline - android.os.SystemClock.uptimeMillis()))
+        assertEquals(announcementDeadline, android.os.SystemClock.uptimeMillis())
+        assertEquals("Screen curtain off", shadowOf(tts).spokenTextList.last())
+        assertEquals(1, shadowOf(tts).spokenTextList.count { it == "Screen curtain off" })
+        curtain.destroy()
+    }
+    @Test fun `destroy cancels pending curtain menu feedback`() {
+        val curtain = curtainMenu()
+        controller.open(); chooseCurtain(); controller.destroy()
+        waitForCurtainFeedback()
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+        curtain.destroy()
+    }
+    @Test fun `new menu cancels prior curtain confirmation`() {
+        val curtain = curtainMenu()
+        controller.open(); chooseCurtain(); controller.open()
+        waitForCurtainFeedback()
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+        controller.destroy(); curtain.destroy()
+    }
+    @Test fun `changed curtain state cancels obsolete ON confirmation`() {
+        val curtain = curtainMenu()
+        controller.open(); chooseCurtain()
+        curtain.disable(announce = false)
+        waitForCurtainFeedback()
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+        controller.destroy(); curtain.destroy()
+    }
+    @Test fun `different app window cancels pending curtain confirmation`() {
+        val curtain = curtainMenu()
+        controller.open(); chooseCurtain()
+        val otherRoot = AccessibilityNodeInfo.obtain()
+        val window = AccessibilityWindowInfo.obtain(); shadowOf(window).setId(2)
+        shadowOf(otherRoot).setAccessibilityWindowInfo(window)
+        service.root = otherRoot
+        waitForCurtainFeedback()
+        assertTrue(shadowOf(tts).spokenTextList.isEmpty())
+        controller.destroy(); curtain.destroy()
+    }
     private fun buttons(view: android.view.View): List<android.widget.Button> = when (view) {
         is android.widget.Button -> listOf(view)
         is android.view.ViewGroup -> (0 until view.childCount).flatMap { buttons(view.getChildAt(it)) }
@@ -132,7 +287,7 @@ class ContextMenuControllerTest {
     }
     @Test fun `Settings follows existing app commands in the main menu`() {
         controller.open()
-        assertEquals(listOf("Click", "Settings", "Cancel"), buttons(dialog().window!!.decorView)
+        assertEquals(listOf("Click", "Settings", "Screen Curtain", "Cancel"), buttons(dialog().window!!.decorView)
             .filter { it.isShown }.map { it.text.toString() })
         controller.destroy()
     }

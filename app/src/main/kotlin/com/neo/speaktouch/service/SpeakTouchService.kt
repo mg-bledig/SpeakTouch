@@ -22,6 +22,9 @@ package com.neo.speaktouch.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Build
+import android.content.Intent
+import android.content.res.Configuration
+import com.neo.speaktouch.controller.ScreenCurtainController
 import android.view.accessibility.AccessibilityEvent
 import android.view.KeyEvent
 import com.neo.speaktouch.controller.ContextMenuController
@@ -47,6 +50,8 @@ class SpeakTouchService : AccessibilityService () {
     @Inject
     lateinit var volumeController: VolumeController
 
+    @Inject lateinit var screenCurtainController: ScreenCurtainController
+
     @Inject lateinit var contextMenuController: ContextMenuController
 
     override fun onCreate() {
@@ -57,6 +62,7 @@ class SpeakTouchService : AccessibilityService () {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        if (::screenCurtainController.isInitialized) screenCurtainController.start()
 
         addFlags(AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS)
 
@@ -73,6 +79,7 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        screenCurtainController.onEvent(event)
         contextMenuController.onEvent(event)
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
@@ -88,12 +95,23 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onDestroy() {
+        screenCurtainController.destroy()
         contextMenuController.destroy()
         super.onDestroy()
 
         interceptors.event.forEach(EventInterceptor::finish)
 
         Controllers.uninstall()
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        if (::screenCurtainController.isInitialized) screenCurtainController.destroy()
+        return super.onUnbind(intent)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::screenCurtainController.isInitialized) screenCurtainController.onConfigurationChanged()
     }
 
     override fun onInterrupt() = Unit

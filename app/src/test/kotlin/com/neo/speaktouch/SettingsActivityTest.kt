@@ -43,9 +43,9 @@ class SettingsActivityTest {
         is ViewGroup -> (0 until view.childCount).flatMap { switches(view.getChildAt(it)) }
         else -> emptyList()
     }
-    @Test fun `single default-off toggle exposes accessible label and checkable state`() {
+    @Test fun `Speak IDs default-off toggle exposes accessible label and checkable state`() {
         val activity = Robolectric.buildActivity(SettingsActivity::class.java).setup().get()
-        val toggle = switches(activity.window.decorView).single()
+        val toggle = switches(activity.window.decorView).single { it.text.toString() == "Speak IDs" }
         val node = AccessibilityNodeInfoCompat.wrap(toggle.createAccessibilityNodeInfo())
         assertEquals("Speak IDs", toggle.text.toString())
         // Older SwitchCompat versions of the platform may include the native On/Off
@@ -61,10 +61,10 @@ class SettingsActivityTest {
     @Test fun `recreated screen restores the chosen setting and can disable it`() {
         SpeechPreferences(context).speakIds = true
         val first = Robolectric.buildActivity(SettingsActivity::class.java).setup()
-        assertTrue(switches(first.get().window.decorView).single().isChecked)
+        assertTrue(switches(first.get().window.decorView).single { it.text.toString() == "Speak IDs" }.isChecked)
         first.pause().stop().destroy()
         val second = Robolectric.buildActivity(SettingsActivity::class.java).setup()
-        val toggle = switches(second.get().window.decorView).single()
+        val toggle = switches(second.get().window.decorView).single { it.text.toString() == "Speak IDs" }
         assertTrue(toggle.isChecked); toggle.performClick()
         assertFalse(SpeechPreferences(context).speakIds)
         second.pause().stop().destroy()

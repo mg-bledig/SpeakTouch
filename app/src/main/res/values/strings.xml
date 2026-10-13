@@ -76,4 +76,14 @@
     <string name="menu_copied">Copied</string>
     <string name="menu_copy_unavailable">Copy unavailable</string>
     <string name="menu_copy_failed">Copy failed</string>
+    <string name="screen_curtain">Screen Curtain</string>
+    <string name="screen_curtain_on">Screen curtain on</string>
+    <string name="screen_curtain_off">Screen curtain off</string>
+    <string name="screen_curtain_failed">Screen curtain could not be changed</string>
+    <string name="screen_curtain_unavailable">Screen Curtain requires SpeakTouch to be running and the device to be unlocked</string>
+    <string name="screen_curtain_confirm_title">Turn on Screen Curtain?</string>
+    <string name="screen_curtain_confirm_message">This will black out the screen for privacy. SpeakTouch will continue working normally. You can turn Screen Curtain off again with a three-finger double tap.</string>
+    <string name="screen_curtain_confirm_message_legacy">This will black out the screen for privacy. SpeakTouch will continue working normally. You can turn Screen Curtain off again by swiping down then right to open the SpeakTouch context menu and choosing Screen Curtain.</string>
+    <string name="screen_curtain_turn_on">Turn on</string>
+    <string name="screen_curtain_cancel">Cancel</string>
 </resources>

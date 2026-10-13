@@ -17,6 +17,9 @@
 package com.neo.speaktouch
 
 import android.os.Bundle
+import android.os.Build
+import androidx.appcompat.app.AlertDialog
+import com.neo.speaktouch.controller.ScreenCurtainSession
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -30,6 +33,19 @@ import com.neo.speaktouch.utils.SpeechPreferences
 class SettingsActivity : AppCompatActivity() {
     private lateinit var preferences: SpeechPreferences
     private lateinit var speakIds: SwitchCompat
+    private lateinit var curtain: SwitchCompat
+    private var syncingCurtain = false
+    private var confirmation: AlertDialog? = null
+    private val curtainChanged: () -> Unit = { syncCurtain() }
+
+    private fun syncCurtain() {
+        if (!::curtain.isInitialized) return
+        syncingCurtain = true
+        val controller = ScreenCurtainSession.controller
+        curtain.isEnabled = controller != null
+        curtain.isChecked = controller?.isEnabled == true
+        syncingCurtain = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,11 +70,52 @@ class SettingsActivity : AppCompatActivity() {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             ViewCompat.setScreenReaderFocusable(this, true)
         })
+        curtain = SwitchCompat(this).apply {
+            setText(R.string.screen_curtain)
+            minimumHeight = (48 * resources.displayMetrics.density).toInt()
+            setOnCheckedChangeListener { _, enabled ->
+                if (!syncingCurtain) {
+                    val controller = ScreenCurtainSession.controller
+                    if (!enabled) controller?.disable()
+                    else if (controller != null && !controller.isEnabled && confirmation == null) {
+                        // Keep the switch OFF until the service successfully attaches its window.
+                        syncCurtain()
+                        confirmation = AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle(R.string.screen_curtain_confirm_title)
+                            .setMessage(if (Build.VERSION.SDK_INT >= 30) R.string.screen_curtain_confirm_message
+                                else R.string.screen_curtain_confirm_message_legacy)
+                            .setPositiveButton(R.string.screen_curtain_turn_on) { _, _ ->
+                                if (ScreenCurtainSession.controller === controller) controller.enable()
+                            }
+                            .setNegativeButton(R.string.screen_curtain_cancel, null)
+                            .create().apply {
+                                setOnDismissListener { confirmation = null; syncCurtain() }
+                                show()
+                            }
+                    }
+                    syncCurtain()
+                }
+            }
+        }
+        rows.addView(curtain, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        syncCurtain()
         setContentView(ScrollView(this).apply { addView(rows) })
     }
 
     override fun onResume() {
         super.onResume()
         speakIds.isChecked = preferences.speakIds
+        ScreenCurtainSession.observe(curtainChanged)
+        syncCurtain()
+    }
+    override fun onPause() {
+        ScreenCurtainSession.removeObserver(curtainChanged)
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        confirmation?.dismiss()
+        super.onDestroy()
     }
 }

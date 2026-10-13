@@ -22,6 +22,7 @@ package com.neo.speaktouch.intercepter.gesture
 import android.accessibilityservice.AccessibilityService
 import android.os.Build
 import androidx.annotation.RequiresApi
+import com.neo.speaktouch.controller.ScreenCurtainController
 import com.neo.speaktouch.controller.ContextMenuController
 import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.RefocusController
@@ -38,7 +39,8 @@ class GestureInterceptor @Inject constructor(
     private val sliderController: SliderController,
     private val refocusController: RefocusController,
     private val speechController: SpeechController,
-    private val contextMenuController: ContextMenuController? = null
+    private val contextMenuController: ContextMenuController? = null,
+    private val screenCurtainController: ScreenCurtainController? = null
 ) {
 
     fun handle(gestureId: Int): Boolean {
@@ -48,6 +50,11 @@ class GestureInterceptor @Inject constructor(
             return true
         }
         speechController.cancelResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            gestureId == AccessibilityService.GESTURE_3_FINGER_DOUBLE_TAP) {
+            screenCurtainController?.toggle()
+            return screenCurtainController != null
+        }
 
         when (gestureId) {
             AccessibilityService.GESTURE_SWIPE_DOWN_AND_RIGHT -> {
