@@ -37,6 +37,7 @@ import com.neo.speaktouch.utils.Reader
 import com.neo.speaktouch.utils.CustomLabelKey
 import com.neo.speaktouch.utils.CustomLabelStore
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,7 +46,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.LooperMode
 import org.robolectric.shadow.api.Shadow
+import org.robolectric.shadows.ShadowChoreographer
 import org.robolectric.shadows.ShadowDialog
 
 @RunWith(RobolectricTestRunner::class)
@@ -59,6 +62,7 @@ class ContextMenuControllerTest {
     private lateinit var tts: TextToSpeech
     private lateinit var speech: SpeechController
     private lateinit var gestures: GestureInterceptor
+    private var previousFramePause: Boolean? = null
     private fun shadow(node: AccessibilityNodeInfoCompat): SliderNodeShadow = Shadow.extract(node.unwrap())
     private fun dialog() = ShadowDialog.getLatestDialog() as AlertDialog
     @Before fun setup() {
@@ -77,6 +81,12 @@ class ContextMenuControllerTest {
         controller=ContextMenuController(wrapper,ActionController(wrapper,context),speech)
         gestures=GestureInterceptor(FocusController(CallbackInterceptor(),wrapper),wrapper,
             SliderController(wrapper,speech),RefocusController(wrapper,speech),speech,controller)
+    }
+    @After fun cleanup() {
+        // Cancel this fixture's timers and dismiss any menu even after a failed assertion.
+        if (::controller.isInitialized) controller.destroy()
+        if (::speech.isInitialized) speech.shutdown()
+        previousFramePause?.let { ShadowChoreographer.setPaused(it) }
     }
     @Test fun `down right opens accessible overlay without speech or actions`() {
         assertTrue(gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN_AND_RIGHT))
@@ -221,31 +231,43 @@ class ContextMenuControllerTest {
         assertEquals(1, shadowOf(tts).spokenTextList.count { it == "Screen curtain on" })
         curtain.destroy()
     }
-    @Test fun `curtain OFF announcement follows restored speech and late window event`() {
-        val curtain = curtainMenu(initiallyOn = true)
-        val previous = shadowOf(tts).spokenTextList.size
-        controller.open(); target.isAccessibilityFocused = false; chooseCurtain()
-        assertFalse(curtain.isEnabled)
-        assertEquals(previous, shadowOf(tts).spokenTextList.size)
-        restorationSpeech()
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
-        assertFalse(shadowOf(tts).spokenTextList.contains("Screen curtain off"))
-        val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
-        // The timer starts inside onEvent, not after both event handlers return.
-        // Anchor the assertions to that deadline rather than adding 149 ms later.
-        val announcementDeadline = android.os.SystemClock.uptimeMillis() + 150
-        controller.onEvent(event)
-        com.neo.speaktouch.intercepter.event.SpeechInterceptor(speech).handle(event)
+    @Test @LooperMode(LooperMode.Mode.PAUSED)
+    fun `curtain OFF announcement follows restored speech and late window event`() {
+        // A paused main looper alone does not stop automatic vsync from advancing
+        // Robolectric's shared clock during dialog layout/dismissal callbacks.
+        previousFramePause = ShadowChoreographer.isPaused()
+        ShadowChoreographer.setPaused(true)
         val mainLooper = shadowOf(Looper.getMainLooper())
-        val beforeDeadline = announcementDeadline - 1
-        mainLooper.idleFor(java.time.Duration.ofMillis(beforeDeadline - android.os.SystemClock.uptimeMillis()))
-        assertEquals(beforeDeadline, android.os.SystemClock.uptimeMillis())
-        assertFalse(shadowOf(tts).spokenTextList.contains("Screen curtain off"))
-        mainLooper.idleFor(java.time.Duration.ofMillis(announcementDeadline - android.os.SystemClock.uptimeMillis()))
-        assertEquals(announcementDeadline, android.os.SystemClock.uptimeMillis())
-        assertEquals("Screen curtain off", shadowOf(tts).spokenTextList.last())
-        assertEquals(1, shadowOf(tts).spokenTextList.count { it == "Screen curtain off" })
-        curtain.destroy()
+        fun advance(ms: Long) = mainLooper.idleFor(java.time.Duration.ofMillis(ms))
+        fun assertNoOff() = assertFalse(shadowOf(tts).spokenTextList.contains("Screen curtain off"))
+        val curtain = curtainMenu(initiallyOn = true)
+        try {
+            val previous = shadowOf(tts).spokenTextList.size
+            controller.open(); target.isAccessibilityFocused = false; chooseCurtain()
+            assertFalse(curtain.isEnabled)
+            assertEquals(previous, shadowOf(tts).spokenTextList.size)
+            restorationSpeech()
+            // Drain immediate UI/TTS callbacks; delayed curtain feedback stays pending.
+            mainLooper.idle()
+            assertTrue(shadowOf(tts).spokenTextList.last().contains("Target"))
+            advance(100)
+            assertNoOff()
+            val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+            controller.onEvent(event)
+            com.neo.speaktouch.intercepter.event.SpeechInterceptor(speech).handle(event)
+            mainLooper.idle()
+            advance(50) // The original 150 ms deadline must have been cancelled.
+            assertNoOff()
+            advance(99) // Still before the new 150 ms settling interval expires.
+            assertNoOff()
+            advance(1) // Cross the late event's settling deadline.
+            assertEquals("Screen curtain off", shadowOf(tts).spokenTextList.last())
+            assertEquals(1, shadowOf(tts).spokenTextList.count { it == "Screen curtain off" })
+            advance(1000)
+            assertEquals(1, shadowOf(tts).spokenTextList.count { it == "Screen curtain off" })
+        } finally {
+            curtain.destroy()
+        }
     }
     @Test fun `destroy cancels pending curtain menu feedback`() {
         val curtain = curtainMenu()

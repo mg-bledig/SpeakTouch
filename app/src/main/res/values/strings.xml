@@ -86,4 +86,6 @@
     <string name="screen_curtain_confirm_message_legacy">This will black out the screen for privacy. SpeakTouch will continue working normally. You can turn Screen Curtain off again by swiping down then right to open the SpeakTouch context menu and choosing Screen Curtain.</string>
     <string name="screen_curtain_turn_on">Turn on</string>
     <string name="screen_curtain_cancel">Cancel</string>
+    <string name="device_locked">Device locked</string>
+    <string name="device_unlocked">Device unlocked</string>
 </resources>

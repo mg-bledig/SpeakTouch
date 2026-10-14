@@ -23,6 +23,7 @@ import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.controller.SpeechController
+import com.neo.speaktouch.controller.ScreenChangeController
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
 import com.neo.speaktouch.utils.extension.isAccessibilityFocused
 import com.neo.speaktouch.utils.extension.isTouchInteractionStart
@@ -32,7 +33,8 @@ import javax.inject.Inject
 
 @ServiceScoped
 class SpeechInterceptor @Inject constructor(
-    private val speech: SpeechController
+    private val speech: SpeechController,
+    private val screenChanges: ScreenChangeController? = null
 ) : EventInterceptor {
 
     override fun handle(event: AccessibilityEvent) {
@@ -59,7 +61,8 @@ class SpeechInterceptor @Inject constructor(
 
         if (event.isAccessibilityFocused) {
             speech.cancelResume()
-            speech.speak(AccessibilityNodeInfoCompat.wrap(event.source ?: return))
+            val node = AccessibilityNodeInfoCompat.wrap(event.source ?: return)
+            if (screenChanges?.onFocused(node) != true) speech.speak(node)
         }
     }
 

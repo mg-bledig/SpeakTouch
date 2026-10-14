@@ -25,6 +25,7 @@ import android.os.Build
 import android.content.Intent
 import android.content.res.Configuration
 import com.neo.speaktouch.controller.ScreenCurtainController
+import com.neo.speaktouch.controller.ScreenChangeController
 import android.view.accessibility.AccessibilityEvent
 import android.view.KeyEvent
 import com.neo.speaktouch.controller.ContextMenuController
@@ -50,6 +51,8 @@ class SpeakTouchService : AccessibilityService () {
     @Inject
     lateinit var volumeController: VolumeController
 
+    @Inject lateinit var screenChangeController: ScreenChangeController
+
     @Inject lateinit var screenCurtainController: ScreenCurtainController
 
     @Inject lateinit var contextMenuController: ContextMenuController
@@ -63,6 +66,7 @@ class SpeakTouchService : AccessibilityService () {
     override fun onServiceConnected() {
         super.onServiceConnected()
         if (::screenCurtainController.isInitialized) screenCurtainController.start()
+        if (::screenChangeController.isInitialized) screenChangeController.start()
 
         addFlags(AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS)
 
@@ -79,6 +83,7 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        screenChangeController.observe(event)
         screenCurtainController.onEvent(event)
         contextMenuController.onEvent(event)
         when (event.eventType) {
@@ -95,6 +100,7 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onDestroy() {
+        if (::screenChangeController.isInitialized) screenChangeController.destroy()
         screenCurtainController.destroy()
         contextMenuController.destroy()
         super.onDestroy()
@@ -105,6 +111,7 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        if (::screenChangeController.isInitialized) screenChangeController.destroy()
         if (::screenCurtainController.isInitialized) screenCurtainController.destroy()
         return super.onUnbind(intent)
     }

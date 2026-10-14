@@ -40,6 +40,7 @@ class SpeechController(
     private var playing: Playing? = null
     private var pausedText: String? = null
     private var sequence = 0L
+    internal val generation: Long @Synchronized get() = sequence
     // Touch-to-stop precedes native gesture recognition. This is scoped to that
     // interaction, not a user-resumable pause or a history of stopped speech.
     private var touchStoppedText: String? = null
@@ -86,9 +87,18 @@ class SpeechController(
 
     fun speak(text: Text) = speak(text.resolved(context))
 
-    fun speak(nodeInfo: AccessibilityNodeInfoCompat) {
+    fun speak(nodeInfo: AccessibilityNodeInfoCompat, contextPrefix: List<String> = emptyList()) {
         Node.log(nodeInfo)
-        speak(reader.read(nodeInfo))
+        val description = reader.read(nodeInfo)
+        if (contextPrefix.isEmpty()) { speak(description); return }
+        val content = reader.read(nodeInfo, Reader.Options(mustReadState = false, mustReadType = false))
+            .replace(Regex("\\s+"), " ").trim()
+        val prefix = contextPrefix.map { it.replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase(java.util.Locale.ROOT) }.filterNot {
+                Regex("(?<![\\p{L}\\p{N}_])" + Regex.escape(it) + "(?![\\p{L}\\p{N}_])",
+                    RegexOption.IGNORE_CASE).containsMatchIn(content)
+            }
+        speak((prefix + description.takeIf { it.isNotEmpty() }.orEmpty()).filter { it.isNotEmpty() }.joinToString(", "))
     }
 
     @Synchronized fun stop() {
