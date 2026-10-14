@@ -113,6 +113,7 @@ class SpeakTouchService : AccessibilityService () {
     override fun onUnbind(intent: Intent?): Boolean {
         if (::screenChangeController.isInitialized) screenChangeController.destroy()
         if (::screenCurtainController.isInitialized) screenCurtainController.destroy()
+        if (::contextMenuController.isInitialized) contextMenuController.destroy()
         return super.onUnbind(intent)
     }
 

@@ -53,7 +53,7 @@ class ScreenChangeController @Inject constructor(
     private var base: Destination? = null
     private var dialogWindow: Int? = null
     private var blocked = false
-    private var deviceLocked = false
+    private var screenOffAnnounced = false
     private var registered = false
     private data class Page(val pkg: String, val window: Int, val text: String, val generation: Long)
     private var pendingPage: Page? = null
@@ -74,6 +74,11 @@ class ScreenChangeController @Inject constructor(
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action in setOf(Intent.ACTION_SCREEN_OFF, Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT))
                 observeLock()
+            if (intent?.action == Intent.ACTION_SCREEN_ON && power.isInteractive) screenOffAnnounced = false
+            if (intent?.action == Intent.ACTION_SCREEN_OFF && !power.isInteractive && !screenOffAnnounced) {
+                screenOffAnnounced = true
+                speech.speak(Text(R.string.screen_off))
+            }
         }
     }
     private val deliver = Runnable { deliverPending() }
@@ -85,7 +90,7 @@ class ScreenChangeController @Inject constructor(
         base = current
         dialogWindow = null
         blocked = keyguard.isKeyguardLocked || keyguard.isDeviceLocked
-        deviceLocked = keyguard.isDeviceLocked
+        screenOffAnnounced = !power.isInteractive
         if (!registered) {
             ContextCompat.registerReceiver(service.getOrThrow(), receiver, IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
@@ -155,11 +160,8 @@ class ScreenChangeController @Inject constructor(
         val lockedNow = keyguard.isDeviceLocked
         val blockedNow = keyguard.isKeyguardLocked || lockedNow
         val becameAccessible = blocked && !blockedNow && power.isInteractive
-        val becameLocked = !deviceLocked && lockedNow
         blocked = blockedNow
-        deviceLocked = lockedNow
         if (blockedNow || !power.isInteractive) { cancelPending(); cancelPage() }
-        if (becameLocked) speech.speak(Text(R.string.device_locked))
         if (becameAccessible) {
             val destination = activeDestination()
             val old = pending

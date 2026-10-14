@@ -87,5 +87,6 @@
     <string name="screen_curtain_turn_on">Turn on</string>
     <string name="screen_curtain_cancel">Cancel</string>
     <string name="device_locked">Device locked</string>
+    <string name="screen_off">Screen off</string>
     <string name="device_unlocked">Device unlocked</string>
 </resources>

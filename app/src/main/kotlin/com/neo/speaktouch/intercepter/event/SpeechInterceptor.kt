@@ -36,7 +36,6 @@ class SpeechInterceptor @Inject constructor(
     private val speech: SpeechController,
     private val screenChanges: ScreenChangeController? = null
 ) : EventInterceptor {
-
     override fun handle(event: AccessibilityEvent) {
         if (event.isTouchInteractionStart) {
             speech.onTouchStart()

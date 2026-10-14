@@ -115,6 +115,24 @@ class ScreenChangeTest {
     }
     @After fun cleanup() { if (::changes.isInitialized) changes.destroy() }
 
+    @Test fun `screen off is spoken once and a later display cycle may speak again`() {
+        power.setIsInteractive(false)
+        service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
+        service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
+        assertEquals(listOf("Screen off"), spoken())
+        power.setIsInteractive(true)
+        service.sendBroadcast(Intent(Intent.ACTION_SCREEN_ON)); advance()
+        assertEquals(listOf("Screen off"), spoken())
+        power.setIsInteractive(false)
+        service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
+        assertEquals(listOf("Screen off", "Screen off"), spoken())
+    }
+    @Test fun `startup with display off does not fabricate screen off feedback`() {
+        changes.destroy(); power.setIsInteractive(false); changes.start(); advance()
+        service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
+        assertTrue(spoken().isEmpty())
+    }
+
     private fun home() {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         shadowOf(context.packageManager).addResolveInfoForIntent(intent, android.content.pm.ResolveInfo().apply {
@@ -321,16 +339,16 @@ class ScreenChangeTest {
     @Test fun `screen off without verified lock does not claim device is locked`() {
         power.setIsInteractive(false)
         service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
-        assertTrue(spoken().isEmpty())
+        assertEquals(listOf("Screen off"), spoken())
     }
     @Test fun `verified lock once then unlock once with restored focus`() {
         scene(); transition(); advance()
         keyguard.setIsDeviceLocked(true); keyguard.setKeyguardLocked(true); power.setIsInteractive(false)
         service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
         service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
-        assertEquals("Device locked", spoken().last()); assertEquals(1, spoken().count { it == "Device locked" })
+        assertEquals("Screen off", spoken().last()); assertEquals(1, spoken().count { it == "Screen off" })
         power.setIsInteractive(true); service.sendBroadcast(Intent(Intent.ACTION_SCREEN_ON)); advance()
-        assertEquals("Device locked", spoken().last())
+        assertEquals("Screen off", spoken().last())
         keyguard.setIsDeviceLocked(false); keyguard.setKeyguardLocked(false)
         service.sendBroadcast(Intent(Intent.ACTION_USER_PRESENT)); shadowOf(Looper.getMainLooper()).idle()
         focus(); advance()
@@ -351,7 +369,8 @@ class ScreenChangeTest {
         assertEquals(listOf("Device unlocked"), spoken())
     }
     @Test fun `destroy discards pending context and unregisters broadcasts`() {
-        scene(); transition(); changes.destroy(); advance()
+        scene(); transition(); changes.destroy(); changes.destroy(); advance()
+        power.setIsInteractive(false)
         keyguard.setIsDeviceLocked(true); service.sendBroadcast(Intent(Intent.ACTION_SCREEN_OFF)); advance()
         assertTrue(spoken().isEmpty())
     }
