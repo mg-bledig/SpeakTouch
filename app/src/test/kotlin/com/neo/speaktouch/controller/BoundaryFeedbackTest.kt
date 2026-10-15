@@ -31,6 +31,9 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.intercepter.event.CallbackInterceptor
 import com.neo.speaktouch.intercepter.event.NavigationSoundInterceptor
 import com.neo.speaktouch.utils.SpeechPreferences
+import com.neo.speaktouch.utils.CustomLabelKey
+import com.neo.speaktouch.utils.CustomLabelStore
+import com.neo.speaktouch.model.NodeFilter
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -196,6 +199,304 @@ class BoundaryFeedbackTest {
         assertFalse(nodeShadow(more).performedActions.contains(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
         assertTrue(tracks.isEmpty())
     }
+    @Test fun `first exhaustion cues without moving focus and second exhaustion wraps forward`() {
+        boundary.navigate(true)
+        assertEquals(1, tracks.size); assertEquals(last, nodeShadow(root).focused)
+        assertFalse(nodeShadow(first).performedActions.contains(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+        boundary.navigate(true)
+        assertEquals(first, nodeShadow(root).focused)
+        assertEquals(1, tracks.size)
+        assertEquals(1, nodeShadow(first).performedActions.count { it == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS })
+    }
+    @Test fun `backward second exhaustion wraps to last eligible target`() {
+        setFocus(first)
+        boundary.navigate(false)
+        assertEquals(first, nodeShadow(root).focused); assertEquals(1, tracks.size)
+        boundary.navigate(false)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(1, tracks.size)
+    }
+    @Test fun `accepted unchanged forward scroll cues then second request wraps despite advertised action`() {
+        var scrolls = 0
+        root.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        nodeShadow(root).setOnPerformActionListener { action, _ ->
+            if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) { scrolls++; true } else false
+        }
+        boundary.navigate(true)
+        assertEquals(1, scrolls); assertTrue(tracks.isEmpty())
+        scrollEvent()
+        assertEquals(1, scrolls); assertEquals(1, tracks.size)
+        assertEquals(last, nodeShadow(root).focused)
+        boundary.navigate(true)
+        assertEquals(first, nodeShadow(root).focused)
+        assertEquals(1, scrolls); assertEquals(1, tracks.size)
+    }
+    @Test fun `window cancellation discards completed no progress proof`() {
+        var scrolls = 0
+        root.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        nodeShadow(root).setOnPerformActionListener { action, _ ->
+            if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) { scrolls++; true } else false
+        }
+        boundary.navigate(true); scrollEvent(); assertEquals(1, tracks.size)
+        boundary.handle(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED))
+        boundary.navigate(true)
+        assertEquals(2, scrolls); assertEquals(last, nodeShadow(root).focused)
+        assertEquals(1, tracks.size)
+    }
+    @Test fun `wrap click is produced once only by confirmed focus event`() {
+        boundary.navigate(true); boundary.navigate(true)
+        assertEquals(1, tracks.size)
+        val focused = event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, first)
+        boundary.handle(focused); movement.handle(focused); movement.handle(focused)
+        assertEquals(2, tracks.size)
+        assertEquals(NavigationSoundController.FRAMES * 2, data.last().size)
+    }
+    @Test fun `reverse direction discards previously armed edge`() {
+        boundary.navigate(true)
+        nodeShadow(first).setOnPerformActionListener { _, _ -> false }
+        boundary.navigate(false)
+        assertEquals(last, nodeShadow(root).focused)
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `opposite direction exhaustion is a fresh edge even at the same node`() {
+        first.isVisibleToUser = false
+        boundary.navigate(true)
+        assertEquals(1, tracks.size)
+        boundary.navigate(false)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `focus change away and back cancels armed edge`() {
+        boundary.navigate(true)
+        setFocus(first); boundary.handle(event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, first))
+        setFocus(last); boundary.handle(event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, last))
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `duplicate focus event on armed origin does not count as a focus change`() {
+        boundary.navigate(true)
+        boundary.handle(event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, last))
+        boundary.navigate(true)
+        assertEquals(first, nodeShadow(root).focused); assertEquals(1, tracks.size)
+    }
+    @Test fun `window event clears armed edge even when original focus returns`() {
+        boundary.navigate(true)
+        boundary.handle(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED))
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `root replacement without window event cannot reuse armed edge`() {
+        boundary.navigate(true)
+        val replacement = node()
+        val other = node("Other")
+        nodeShadow(replacement).addChild(other)
+        nodeShadow(replacement).focused = other; other.isAccessibilityFocused = true
+        service.root = replacement
+        boundary.navigate(true)
+        assertEquals(other, nodeShadow(replacement).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `window ID change without an event cannot reuse armed edge`() {
+        boundary.navigate(true)
+        shadowOf(window).setId(2)
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+        shadowOf(window).setId(1)
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(3, tracks.size)
+    }
+    @Test fun `successful ordinary navigation clears armed edge`() {
+        boundary.navigate(true)
+        val arrived = node("Arrived")
+        nodeShadow(root).addChild(arrived)
+        boundary.navigate(true)
+        assertEquals(arrived, nodeShadow(root).focused); assertEquals(1, tracks.size)
+        arrived.isVisibleToUser = false; setFocus(last)
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `pending scroll cancels armed edge and never wraps from pending outcome`() {
+        boundary.navigate(true)
+        root.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        nodeShadow(root).setOnPerformActionListener { action, _ -> action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD }
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(1, tracks.size)
+        root.removeAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        nodeShadow(root).setOnPerformActionListener { _, _ -> false }
+        scrollEvent()
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `advertised failed scroll clears armed edge without wrapping`() {
+        boundary.navigate(true)
+        root.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(1, tracks.size)
+        root.removeAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `invalid origin clears armed edge`() {
+        boundary.navigate(true)
+        last.isVisibleToUser = false; boundary.navigate(true)
+        assertEquals(1, tracks.size)
+        last.isVisibleToUser = true; boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `navigation context change clears armed edge`() {
+        boundary.navigate(true)
+        boundary.handle(event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, root))
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `scroll context change clears armed edge`() {
+        boundary.navigate(true)
+        boundary.handle(event(AccessibilityEvent.TYPE_VIEW_SCROLLED, root))
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `second swipe touch and gesture lifecycle preserves the proven edge`() = gestureTest { gestures ->
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_RIGHT)
+        boundary.handle(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START))
+        boundary.handle(event(AccessibilityEvent.TYPE_GESTURE_DETECTION_START))
+        boundary.handle(event(AccessibilityEvent.TYPE_GESTURE_DETECTION_END))
+        boundary.handle(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_END))
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_RIGHT)
+        assertEquals(first, nodeShadow(root).focused); assertEquals(1, tracks.size)
+    }
+    @Test fun `unrelated reread gesture cancels armed edge`() = gestureTest { gestures ->
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_RIGHT)
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_UP_AND_DOWN)
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_RIGHT)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `forward wrap uses resolved traversal order`() {
+        nodeShadow(last).setTraversalBefore(first)
+        setFocus(first)
+        boundary.navigate(true); boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(1, tracks.size)
+    }
+    @Test fun `backward wrap uses resolved traversal order`() {
+        nodeShadow(last).setTraversalBefore(first)
+        setFocus(last)
+        boundary.navigate(false); boundary.navigate(false)
+        assertEquals(first, nodeShadow(root).focused); assertEquals(1, tracks.size)
+    }
+    @Test fun `wrap skips invisible and passive blank nodes`() {
+        first.isVisibleToUser = false
+        nodeShadow(root).addChild(node())
+        val end = node("End"); nodeShadow(root).addChild(end); setFocus(end)
+        boundary.navigate(true); boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(1, tracks.size)
+    }
+    private fun backwardWrapWithTail(tail: AccessibilityNodeInfo) {
+        nodeShadow(root).addChild(tail); setFocus(first)
+        boundary.navigate(false)
+        assertEquals(first, nodeShadow(root).focused); assertEquals(1, tracks.size)
+        boundary.navigate(false)
+    }
+    @Test fun `backward wrap skips empty passive input focusable leaf after meaningful content`() {
+        val passive = node().apply { isFocusable = true }
+        // #88 ordinary eligibility is deliberately unchanged; this is a wrap-only policy.
+        assertTrue(NodeFilter.Focusable.filter(passive))
+        assertEquals("", Reader(context).read(AccessibilityNodeInfoCompat.wrap(passive)))
+        backwardWrapWithTail(passive)
+        assertEquals(last, nodeShadow(root).focused)
+        assertFalse(nodeShadow(passive).performedActions.contains(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+    }
+    @Test fun `focus actions alone do not make a blank wrap destination usable`() {
+        val passive = node().apply {
+            isFocusable = true
+            addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_FOCUS)
+            addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_ACCESSIBILITY_FOCUS)
+        }
+        backwardWrapWithTail(passive)
+        assertEquals(last, nodeShadow(root).focused)
+    }
+    @Test fun `forward wrap skips empty input focusable leaf before meaningful content`() {
+        first.text = null; first.isFocusable = true
+        val end = node("End"); nodeShadow(root).addChild(end); setFocus(end)
+        boundary.navigate(true); boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused)
+        assertFalse(nodeShadow(first).performedActions.contains(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+    }
+    @Test fun `unlabeled clickable leaf remains a usable backward wrap destination`() {
+        val control = node().apply { isClickable = true }
+        backwardWrapWithTail(control)
+        assertEquals(control, nodeShadow(root).focused)
+    }
+    @Test fun `unlabeled long clickable leaf remains a usable backward wrap destination`() {
+        val control = node().apply { isLongClickable = true }
+        backwardWrapWithTail(control)
+        assertEquals(control, nodeShadow(root).focused)
+    }
+    @Test fun `unlabeled button retains role based wrap eligibility without click flags`() {
+        val control = node().apply { className = "android.widget.Button"; isFocusable = true }
+        backwardWrapWithTail(control)
+        assertEquals(control, nodeShadow(root).focused)
+    }
+    @Test fun `advertised click preserves unlabeled actionable wrap destination`() {
+        val control = node().apply {
+            isFocusable = true; addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
+        }
+        backwardWrapWithTail(control)
+        assertEquals(control, nodeShadow(root).focused)
+    }
+    @Test fun `labeled custom action preserves unlabeled actionable wrap destination`() {
+        val control = node().apply {
+            isFocusable = true; addAction(AccessibilityNodeInfo.AccessibilityAction(0x7f0a0010, "Retry"))
+        }
+        backwardWrapWithTail(control)
+        assertEquals(control, nodeShadow(root).focused)
+        assertFalse(nodeShadow(control).performedActions.contains(0x7f0a0010))
+    }
+    @Test fun `custom label makes otherwise blank focusable destination usable`() {
+        val control = node().apply { isFocusable = true; viewIdResourceName = "test.boundary:id/labelled" }
+        val store = CustomLabelStore(context)
+        val key = CustomLabelKey.from(AccessibilityNodeInfoCompat.wrap(control))!!
+        assertTrue(store.put(key, "Saved label"))
+        try {
+            backwardWrapWithTail(control)
+            assertEquals(control, nodeShadow(root).focused)
+        } finally { store.remove(key) }
+    }
+    @Test fun `grouped readable content remains a usable wrap destination`() {
+        val group = node().apply { isFocusable = true }
+        nodeShadow(group).addChild(node("Group content").apply { isFocusable = false })
+        backwardWrapWithTail(group)
+        assertEquals(group, nodeShadow(root).focused)
+    }
+    @Test fun `window edge focus helper performs no scroll actions`() {
+        root.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        val before = nodeShadow(root).performedActions.toList()
+        assertEquals(FocusController.NavigationOutcome.FOCUS_REQUESTED,
+            focus.wrapFocusToWindowEdge(root, last, true) { true })
+        assertEquals(before, nodeShadow(root).performedActions)
+        assertEquals(first, nodeShadow(root).focused); assertTrue(tracks.isEmpty())
+    }
+    @Test fun `wrap helper rejects changed context and performs no action`() {
+        assertEquals(FocusController.NavigationOutcome.UNAVAILABLE,
+            focus.wrapFocusToWindowEdge(root, last, true) { false })
+        assertEquals(last, nodeShadow(root).focused)
+        assertFalse(nodeShadow(first).performedActions.contains(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+    }
+    @Test fun `failed wrap focus does not cue again or retain the arm`() {
+        boundary.navigate(true)
+        nodeShadow(first).setOnPerformActionListener { _, _ -> false }
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(1, tracks.size)
+        boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(2, tracks.size)
+    }
+    @Test fun `one eligible node is not re focused by wrap`() {
+        first.isVisibleToUser = false
+        boundary.navigate(true); boundary.navigate(true)
+        assertEquals(last, nodeShadow(root).focused); assertEquals(1, tracks.size)
+        assertFalse(nodeShadow(last).performedActions.contains(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+    }
+    @Test fun `wrap remains available when both feedback preferences are off`() {
+        prefs(false, false)
+        boundary.navigate(true); boundary.navigate(true)
+        assertEquals(first, nodeShadow(root).focused)
+        assertTrue(tracks.isEmpty()); assertFalse(shadowOf(vibrator).isVibrating)
+    }
     @Test fun `next at final item emits one boundary cue`() {
         boundary.navigate(true); assertEquals(1, tracks.size)
         assertArrayEquals(BoundaryFeedbackController.PCM, data.single())
@@ -276,10 +577,17 @@ class BoundaryFeedbackTest {
         val endScroll = scrollPending(); boundary.navigate(true); endScroll(); scrollEvent(); scrollEvent()
         assertEquals(1, tracks.size)
     }
-    @Test fun `rapid boundary attempts replace tracks without backlog`() {
-        repeat(4) { boundary.navigate(true) }; assertEquals(4, tracks.size)
-        tracks.dropLast(1).forEach { assertEquals(1, audio(it).releases) }
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2)); assertEquals(4, tracks.size)
+    @Test fun `rapid navigation alternates edge cue wrap and normal movement without backlog`() {
+        boundary.navigate(true) // cue at Last
+        boundary.navigate(true) // wrap to First
+        assertEquals(first, nodeShadow(root).focused)
+        boundary.navigate(true) // ordinary navigation to Last
+        boundary.navigate(true) // cue at Last again
+        assertEquals(last, nodeShadow(root).focused)
+        assertEquals(2, tracks.size)
+        assertEquals(1, audio(tracks.first()).releases)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertEquals(2, tracks.size)
     }
     @Test fun `audible off and haptic on are independent`() {
         prefs(false, true); boundary.navigate(true); assertTrue(tracks.isEmpty()); assertTrue(shadowOf(vibrator).isVibrating)
@@ -295,8 +603,9 @@ class BoundaryFeedbackTest {
     }
     @Test fun `preference changes are live`() {
         prefs(false, false); boundary.navigate(true); assertTrue(tracks.isEmpty())
-        prefs(true, false); boundary.navigate(true); assertEquals(1, tracks.size)
-        prefs(false, true); boundary.navigate(true); assertEquals(1, tracks.size); assertTrue(shadowOf(vibrator).isVibrating)
+        // Start a fresh edge in each phase; the second stage itself emits no boundary cue.
+        boundary.cancel(); prefs(true, false); boundary.navigate(true); assertEquals(1, tracks.size)
+        boundary.cancel(); prefs(false, true); boundary.navigate(true); assertEquals(1, tracks.size); assertTrue(shadowOf(vibrator).isVibrating)
     }
     @Test fun `teardown cancels callback and late completion`() {
         val endScroll = scrollPending(); boundary.finish(); endScroll(); scrollEvent(); boundary.navigate(true)

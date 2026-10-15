@@ -67,6 +67,8 @@ class SpeakTouchService : AccessibilityService () {
         super.onServiceConnected()
         if (::interceptors.isInitialized) interceptors.navigationSound.onServiceConnected()
         if (::interceptors.isInitialized) interceptors.boundaryFeedback.start()
+        if (::interceptors.isInitialized) interceptors.scrollFeedback.start()
+        if (::interceptors.isInitialized) interceptors.manualScrollFocus.start()
         if (::screenCurtainController.isInitialized) screenCurtainController.start()
         if (::screenChangeController.isInitialized) screenChangeController.start()
 
@@ -115,6 +117,8 @@ class SpeakTouchService : AccessibilityService () {
     override fun onUnbind(intent: Intent?): Boolean {
         if (::interceptors.isInitialized) interceptors.navigationSound.finish()
         if (::interceptors.isInitialized) interceptors.boundaryFeedback.finish()
+        if (::interceptors.isInitialized) interceptors.scrollFeedback.finish()
+        if (::interceptors.isInitialized) interceptors.manualScrollFocus.finish()
         if (::screenChangeController.isInitialized) screenChangeController.destroy()
         if (::screenCurtainController.isInitialized) screenCurtainController.destroy()
         if (::contextMenuController.isInitialized) contextMenuController.destroy()

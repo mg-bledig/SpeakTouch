@@ -1,5 +1,34 @@
-# Speak Touch
-A open source screen reader for android.
+# SpeakTouch
+
+SpeakTouch is an open-source screen reader for Android.
+
+The project is under active development and is not yet feature-complete. This fork is being used to continue testing and improving SpeakTouch on real Android devices.
+
+## About this fork
+
+This fork continues development and testing of the original SpeakTouch project.
+
+The aim is to preserve the original idea of a simple, practical, open-source Android screen reader while gradually improving its accessibility support, reliability and everyday usability.
+
+Development here is being tested on real Android devices. The work is kept public so that the original developer, contributors and anyone interested in SpeakTouch can see and try the current state of the project.
+
+## Current development status
+
+Recent work includes:
+
+- improved accessibility focus and navigation
+- support for state descriptions, labels, traversal order and screen-reader focusable content
+- slider support
+- progress feedback and percentage updates
+- re-read current focus
+- pause and resume speech
+- support for accessibility actions
+- initial context menu support for focused elements
+- improved handling of unlabeled interactive elements
+- a fix for crashes when the active accessibility root is temporarily unavailable
+- additional validation and regression tests
+
+Some navigation edge cases, including wrap-around behavior in certain virtualized app grids, are still being investigated.
 
 ## Build
 In development, choose the *debug build type*, because for the *release build type*, it's necessary to create a [keystore](https://developer.android.com/training/articles/keystore) and specify its properties in the `keystore.properties` file (use `keystore.properties.example` as a base).

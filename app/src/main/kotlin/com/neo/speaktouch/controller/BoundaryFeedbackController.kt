@@ -19,10 +19,13 @@ package com.neo.speaktouch.controller
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
 import com.neo.speaktouch.model.NodeFilter
 import com.neo.speaktouch.utils.TraversalOrder
 import com.neo.speaktouch.utils.SpeechPreferences
+import com.neo.speaktouch.utils.Reader
+import com.neo.speaktouch.utils.NodeValidator
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ServiceScoped
 import android.content.Context
@@ -39,42 +42,71 @@ class BoundaryFeedbackController @Inject constructor(
     @ApplicationContext context: Context
 ) : EventInterceptor {
     private val preferences = SpeechPreferences(context)
+    private val reader = Reader(context)
     private val player = ShortPcmPlayer()
     private var resultHandler: ((FocusController.NavigationOutcome) -> Unit)? = null
     private var origin: AccessibilityNodeInfo? = null
     private var finished = false
+    private data class ArmedEdge(
+        val root: AccessibilityNodeInfo, val window: Int,
+        val target: AccessibilityNodeInfo, val forward: Boolean
+    )
+    private var armedEdge: ArmedEdge? = null
 
     fun start() { cancel(); finished = false }
 
     fun navigate(forward: Boolean) {
-        cancel()
+        cancelRequest()
         if (finished) return
         val target = service.getFocused()
         val root = service.getRoot()
         if (target == null || root == null) {
+            armedEdge = null
             // Keep existing initial-focus/fallback navigation, without claiming an edge.
             if (forward) focus.moveFocusToNext() else focus.moveFocusToPrevious()
             return
         }
         origin = target
         val window = root.windowId
+        val edge = ArmedEdge(root, window, target, forward)
+        if (armedEdge != edge) {
+            armedEdge = null
+        }
         fun current(): Boolean = try {
             !finished && target.refresh() && target.isVisibleToUser && target.isAccessibilityFocused &&
+                NodeFilter.Focusable.filter(target) &&
                 target.windowId == window && service.getRoot() == root &&
                 service.getRoot()?.windowId == window && service.getFocused() == target
         } catch (_: RuntimeException) { false }
-        if (!current()) { cancel(); return }
+        if (!current()) {
+            cancel(); return
+        }
         lateinit var handler: (FocusController.NavigationOutcome) -> Unit
         val guard = {
-            if (resultHandler === handler && current()) true else { cancel(); false }
+            if (resultHandler === handler && current()) true else {
+                cancel(); false
+            }
         }
         handler = { outcome ->
             if (resultHandler === handler) {
-                if (outcome != FocusController.NavigationOutcome.SCROLL_PENDING) {
+                if (outcome == FocusController.NavigationOutcome.SCROLL_PENDING) {
+                    armedEdge = null
+                } else {
                     val boundary = outcome == FocusController.NavigationOutcome.EXHAUSTED &&
                         current() && completeTree(root, target) && stillExhausted(root, target, forward) && current()
-                    cancel()
-                    if (boundary) feedback()
+                    val wrap = boundary && armedEdge == edge
+                    cancelRequest()
+                    if (!boundary) {
+                        armedEdge = null
+                    } else if (wrap) {
+                        armedEdge = null
+                        focus.wrapFocusToWindowEdge(root, target, forward, ::isUsableWrapTarget) {
+                            current() && completeTree(root, target) && stillExhausted(root, target, forward) && current()
+                        }
+                    } else {
+                        armedEdge = edge
+                        feedback()
+                    }
                 }
             }
         }
@@ -82,7 +114,24 @@ class BoundaryFeedbackController @Inject constructor(
         try {
             if (forward) focus.moveFocusToNext(onResult = handler, canContinue = guard)
             else focus.moveFocusToPrevious(onResult = handler, canContinue = guard)
-        } catch (_: RuntimeException) { cancel() }
+        } catch (error: RuntimeException) {
+            cancel()
+        }
+    }
+
+    private fun isUsableWrapTarget(node: AccessibilityNodeInfo): Boolean {
+        val compat = AccessibilityNodeInfoCompat.wrap(node)
+        if (NodeValidator.isClickable(compat)) return true
+        // Preserve argument-free interactions even when the provider omitted click flags.
+        if (node.actionList.any {
+                it.id == AccessibilityNodeInfo.ACTION_CLICK || it.id == AccessibilityNodeInfo.ACTION_LONG_CLICK ||
+                    it.id == AccessibilityNodeInfo.ACTION_DISMISS || it.id == AccessibilityNodeInfo.ACTION_EXPAND ||
+                    it.id == AccessibilityNodeInfo.ACTION_COLLAPSE ||
+                    it.id > 0x01FFFFFF && !it.label.isNullOrBlank()
+            }) return true
+        // Use actual existing speech, including roles, states, associated/custom labels
+        // and grouped content. Input focusability alone is not a useful wrap destination.
+        return reader.read(compat).isNotBlank()
     }
 
     // Missing/stale children cannot establish a true boundary. Only used after exhaustion.
@@ -93,18 +142,23 @@ class BoundaryFeedbackController @Inject constructor(
         var complete = true
         while (pending.isNotEmpty() && complete) {
             val node = pending.removeLast()
-            if (!seen.add(node) || node.windowId != root.windowId || !node.refresh()) {
+            val firstVisit = seen.add(node)
+            if (!firstVisit || node.windowId != root.windowId || !node.refresh()) {
                 complete = false
             } else {
                 for (index in 0 until node.childCount) {
                     val child = node.getChild(index)
-                    if (child == null) { complete = false; break }
+                    if (child == null) {
+                        complete = false; break
+                    }
                     pending.add(child)
                 }
             }
         }
         complete && target in seen
-    } catch (_: RuntimeException) { false }
+    } catch (error: RuntimeException) {
+        false
+    }
 
     // A provider may add content or a scroll action during refresh. Recheck the fresh
     // resolved set before emitting a cue rather than trusting the earlier snapshot.
@@ -112,11 +166,20 @@ class BoundaryFeedbackController @Inject constructor(
         val order = TraversalOrder(root)
         val nodes = order.nodes()
         val index = nodes.indexOf(target)
-        if (index < 0) return false
+        if (index < 0) {
+            return false
+        }
         val remaining = if (forward) nodes.drop(index + 1) else nodes.take(index)
-        if (remaining.any { NodeFilter.Focusable.filter(it) }) return false
+        val next = remaining.firstOrNull { NodeFilter.Focusable.filter(it) }
+        if (next != null) {
+            return false
+        }
         val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-        return order.ancestorsOf(target).none { parent -> parent.actionList.any { it.id == action } }
+        val blocker = order.ancestorsOf(target).firstOrNull { parent ->
+            parent.actionList.any { it.id == action } &&
+                !(forward && focus.hasExhaustedForwardScroll(parent, root, target))
+        }
+        return blocker == null
     }
     private fun feedback() {
         if (preferences.audibleNavigationFeedback) player.play(PCM, SAMPLE_RATE)
@@ -124,6 +187,12 @@ class BoundaryFeedbackController @Inject constructor(
     }
 
     fun cancel() {
+        focus.clearForwardScrollProofs()
+        armedEdge = null
+        cancelRequest()
+    }
+
+    private fun cancelRequest() {
         resultHandler?.let { focus.cancelPendingNavigation(it) }
         resultHandler = null
         origin = null
@@ -133,12 +202,21 @@ class BoundaryFeedbackController @Inject constructor(
     override fun handle(event: AccessibilityEvent) {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
-            AccessibilityEvent.TYPE_GESTURE_DETECTION_START,
             AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED -> cancel()
+            // These precede the next swipe too. Cancel its predecessor's pending
+            // work/audio, but retain the edge until the gesture/context is known.
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
+            AccessibilityEvent.TYPE_GESTURE_DETECTION_START -> cancelRequest()
             AccessibilityEvent.TYPE_WINDOWS_CHANGED -> if (Build.VERSION.SDK_INT < 28 ||
                 event.windowChanges and AccessibilityEvent.WINDOWS_CHANGE_ACTIVE != 0) cancel()
-            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED -> if (event.source != origin) cancel()
+            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ->
+                if (event.source != origin && event.source != armedEdge?.target) cancel()
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> armedEdge = null
+            AccessibilityEvent.TYPE_VIEW_HOVER_ENTER -> if (event.source != armedEdge?.target) armedEdge = null
         }
     }
 

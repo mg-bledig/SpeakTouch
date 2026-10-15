@@ -18,6 +18,8 @@
 
 package com.neo.speaktouch.intercepter
 
+import com.neo.speaktouch.controller.ManualScrollFocusController
+import com.neo.speaktouch.controller.ScrollFeedbackController
 import com.neo.speaktouch.controller.BoundaryFeedbackController
 import com.neo.speaktouch.intercepter.event.CallbackInterceptor
 import com.neo.speaktouch.intercepter.event.FocusInterceptor
@@ -37,10 +39,12 @@ class Interceptors @Inject constructor(
     val progressTones: ProgressToneInterceptor,
     val navigationSound: NavigationSoundInterceptor,
     val boundaryFeedback: BoundaryFeedbackController,
+    val scrollFeedback: ScrollFeedbackController,
+    val manualScrollFocus: ManualScrollFocusController,
     val focus: FocusInterceptor,
     val haptic: HapticInterceptor,
     val callback : CallbackInterceptor,
     val gesture: GestureInterceptor
 ) {
-    val event = listOf(speech, progress, progressTones, navigationSound, boundaryFeedback, focus, haptic, callback)
+    val event = listOf(speech, progress, progressTones, navigationSound, boundaryFeedback, scrollFeedback, manualScrollFocus, focus, haptic, callback)
 }
