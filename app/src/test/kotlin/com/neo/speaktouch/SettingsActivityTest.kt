@@ -43,6 +43,31 @@ class SettingsActivityTest {
         is ViewGroup -> (0 until view.childCount).flatMap { switches(view.getChildAt(it)) }
         else -> emptyList()
     }
+    @Test fun `navigation switches are accessible independent and persist through recreation`() {
+        val first = Robolectric.buildActivity(SettingsActivity::class.java).setup()
+        val rows = switches(first.get().window.decorView)
+        val audible = rows.single { it.text.toString() == "Audible navigation feedback" }
+        val haptic = rows.single { it.text.toString() == "Haptic navigation feedback" }
+        assertTrue(audible.isChecked); assertTrue(haptic.isChecked)
+        for (toggle in listOf(audible, haptic)) {
+            val node = AccessibilityNodeInfoCompat.wrap(toggle.createAccessibilityNodeInfo())
+            assertTrue(node.isCheckable); assertTrue(node.text.toString().contains(toggle.text))
+        }
+        haptic.performClick(); assertFalse(haptic.isChecked); assertTrue(audible.isChecked)
+        audible.performClick(); assertFalse(audible.isChecked); assertFalse(haptic.isChecked)
+        assertFalse(SpeechPreferences(context).audibleNavigationFeedback)
+        assertFalse(SpeechPreferences(context).hapticNavigationFeedback)
+        first.pause().stop().destroy()
+        val second = Robolectric.buildActivity(SettingsActivity::class.java).setup()
+        val restored = switches(second.get().window.decorView)
+        assertFalse(restored.single { it.text.toString() == "Audible navigation feedback" }.isChecked)
+        assertFalse(restored.single { it.text.toString() == "Haptic navigation feedback" }.isChecked)
+        restored.single { it.text.toString() == "Audible navigation feedback" }.performClick()
+        restored.single { it.text.toString() == "Haptic navigation feedback" }.performClick()
+        assertTrue(SpeechPreferences(context).audibleNavigationFeedback)
+        assertTrue(SpeechPreferences(context).hapticNavigationFeedback)
+        second.pause().stop().destroy()
+    }
     @Test fun `Speak IDs default-off toggle exposes accessible label and checkable state`() {
         val activity = Robolectric.buildActivity(SettingsActivity::class.java).setup().get()
         val toggle = switches(activity.window.decorView).single { it.text.toString() == "Speak IDs" }

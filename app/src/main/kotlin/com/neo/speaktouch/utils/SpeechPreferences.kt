@@ -26,5 +26,13 @@ internal class SpeechPreferences(context: Context) {
         get() = preferences.getBoolean("speak_ids", false)
         set(value) { preferences.edit().putBoolean("speak_ids", value).apply() }
 
+    var audibleNavigationFeedback: Boolean
+        get() = preferences.getBoolean("audible_navigation_feedback", true)
+        set(value) { preferences.edit().putBoolean("audible_navigation_feedback", value).apply() }
+
+    var hapticNavigationFeedback: Boolean
+        get() = preferences.getBoolean("haptic_navigation_feedback", true)
+        set(value) { preferences.edit().putBoolean("haptic_navigation_feedback", value).apply() }
+
     companion object { const val FILE_NAME = "speech_preferences" }
 }

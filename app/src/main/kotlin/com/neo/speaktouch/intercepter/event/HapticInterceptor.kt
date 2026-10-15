@@ -18,21 +18,26 @@
 
 package com.neo.speaktouch.intercepter.event
 
+import android.content.Context
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.neo.speaktouch.controller.VibratorController
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
+import com.neo.speaktouch.utils.SpeechPreferences
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
 
 @ServiceScoped
 class HapticInterceptor @Inject constructor(
-    private val vibration: VibratorController
+    private val vibration: VibratorController,
+    @ApplicationContext context: Context
 ) : EventInterceptor {
+    private val preferences = SpeechPreferences(context)
 
     override fun handle(event: AccessibilityEvent) {
 
-        if (!vibration.hasVibrator()) return
+        if (!preferences.hapticNavigationFeedback || !vibration.hasVibrator()) return
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED) {
             handleFocusVibration(event.source ?: return)

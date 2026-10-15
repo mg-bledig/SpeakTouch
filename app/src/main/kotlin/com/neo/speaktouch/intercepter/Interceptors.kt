@@ -18,6 +18,7 @@
 
 package com.neo.speaktouch.intercepter
 
+import com.neo.speaktouch.controller.BoundaryFeedbackController
 import com.neo.speaktouch.intercepter.event.CallbackInterceptor
 import com.neo.speaktouch.intercepter.event.FocusInterceptor
 import com.neo.speaktouch.intercepter.gesture.GestureInterceptor
@@ -25,6 +26,7 @@ import com.neo.speaktouch.intercepter.event.HapticInterceptor
 import com.neo.speaktouch.intercepter.event.SpeechInterceptor
 import com.neo.speaktouch.intercepter.event.ProgressInterceptor
 import com.neo.speaktouch.intercepter.event.ProgressToneInterceptor
+import com.neo.speaktouch.intercepter.event.NavigationSoundInterceptor
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
 
@@ -33,10 +35,12 @@ class Interceptors @Inject constructor(
     val speech: SpeechInterceptor,
     val progress: ProgressInterceptor,
     val progressTones: ProgressToneInterceptor,
+    val navigationSound: NavigationSoundInterceptor,
+    val boundaryFeedback: BoundaryFeedbackController,
     val focus: FocusInterceptor,
     val haptic: HapticInterceptor,
     val callback : CallbackInterceptor,
     val gesture: GestureInterceptor
 ) {
-    val event = listOf(speech, progress, progressTones, focus, haptic, callback)
+    val event = listOf(speech, progress, progressTones, navigationSound, boundaryFeedback, focus, haptic, callback)
 }

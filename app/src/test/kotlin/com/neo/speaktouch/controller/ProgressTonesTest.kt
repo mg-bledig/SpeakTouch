@@ -64,6 +64,16 @@ class ProgressTonesTest {
         tones.handle(event())
     }
     private fun advance(ms: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ms))
+    @Test fun `navigation feedback switches do not change progress tone eligibility`() {
+        val preferences = com.neo.speaktouch.utils.SpeechPreferences(RuntimeEnvironment.getApplication())
+        for (audible in listOf(false, true)) for (haptic in listOf(false, true)) {
+            preferences.audibleNavigationFeedback = audible
+            preferences.hapticNavigationFeedback = haptic
+            advance(100)
+            change(20.0 + tracks.size * 10.0)
+        }
+        assertEquals(4, tracks.size)
+    }
     @Before fun setup() {
         fun node() = AccessibilityNodeInfoCompat.wrap(AccessibilityNodeInfo.obtain()).apply {
             isVisibleToUser = true; isAccessibilityFocused = true

@@ -48,7 +48,12 @@ class CallbackInterceptor @Inject constructor() : EventInterceptor {
         scrolls.add(callback)
     }
 
-    abstract class Scroll(val target: AccessibilityNodeInfo) {
+    @Synchronized
+    fun cancel(owner: Any) { scrolls.removeAll { it.owner === owner } }
+
+    override fun finish() { scrolls.clear() }
+
+    abstract class Scroll(val target: AccessibilityNodeInfo, val owner: Any? = null) {
         abstract operator fun invoke()
     }
 }

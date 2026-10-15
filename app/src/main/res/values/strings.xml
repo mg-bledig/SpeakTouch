@@ -89,4 +89,6 @@
     <string name="device_locked">Device locked</string>
     <string name="screen_off">Screen off</string>
     <string name="device_unlocked">Device unlocked</string>
+    <string name="settings_audible_navigation_feedback">Audible navigation feedback</string>
+    <string name="settings_haptic_navigation_feedback">Haptic navigation feedback</string>
 </resources>

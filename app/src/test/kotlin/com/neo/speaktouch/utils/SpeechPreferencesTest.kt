@@ -33,6 +33,29 @@ class SpeechPreferencesTest {
         context.getSharedPreferences(SpeechPreferences.FILE_NAME, Context.MODE_PRIVATE).edit().clear().commit()
     }
     @Test fun `Speak IDs defaults off`() { assertFalse(SpeechPreferences(context).speakIds) }
+    @Test fun `navigation feedback defaults both on`() {
+        val preferences = SpeechPreferences(context)
+        assertTrue(preferences.hapticNavigationFeedback)
+        assertTrue(preferences.audibleNavigationFeedback)
+    }
+    @Test fun `all four navigation preference combinations remain independent`() {
+        val preferences = SpeechPreferences(context)
+        for (audible in listOf(false, true)) for (haptic in listOf(false, true)) {
+            preferences.audibleNavigationFeedback = audible
+            preferences.hapticNavigationFeedback = haptic
+            val reopened = SpeechPreferences(context)
+            assertEquals(audible, reopened.audibleNavigationFeedback)
+            assertEquals(haptic, reopened.hapticNavigationFeedback)
+            assertFalse(reopened.speakIds)
+        }
+    }
+    @Test fun `running preference instance sees live navigation changes`() {
+        val existing = SpeechPreferences(context)
+        SpeechPreferences(context).apply { hapticNavigationFeedback = false; audibleNavigationFeedback = true }
+        assertFalse(existing.hapticNavigationFeedback); assertTrue(existing.audibleNavigationFeedback)
+        SpeechPreferences(context).apply { hapticNavigationFeedback = true; audibleNavigationFeedback = false }
+        assertTrue(existing.hapticNavigationFeedback); assertFalse(existing.audibleNavigationFeedback)
+    }
     @Test fun `new preference instance retains chosen setting`() {
         SpeechPreferences(context).speakIds = true
         assertTrue(SpeechPreferences(context).speakIds)

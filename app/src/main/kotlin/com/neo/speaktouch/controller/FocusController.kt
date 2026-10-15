@@ -25,7 +25,7 @@ import com.neo.speaktouch.model.NodeFilter
 import com.neo.speaktouch.utils.TraversalOrder
 import com.neo.speaktouch.utils.extension.Direction
 import com.neo.speaktouch.utils.extension.nodeScan
-import com.neo.speaktouch.utils.extension.performFocus
+import com.neo.speaktouch.utils.extension.NodeScanScope
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
 
@@ -43,47 +43,71 @@ class FocusController @Inject constructor(
     private fun getTraversalOrder(): TraversalOrder? =
         serviceController.getOrThrow().rootInActiveWindow?.let { TraversalOrder(it) }
 
+    enum class NavigationOutcome { FOCUS_REQUESTED, SCROLL_PENDING, EXHAUSTED, UNAVAILABLE, ACTION_FAILED }
+
+    private fun focusOutcome(node: AccessibilityNodeInfo, validate: Boolean = false): NavigationOutcome {
+        if (validate && (!node.refresh() || !node.isVisibleToUser || !NodeFilter.Focusable.filter(node))) return NavigationOutcome.UNAVAILABLE
+        return if (node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)) NavigationOutcome.FOCUS_REQUESTED
+        else NavigationOutcome.ACTION_FAILED
+    }
+
+    fun cancelPendingNavigation(owner: Any) = callbackInterceptor.cancel(owner)
+
     private fun moveInOrder(
         order: TraversalOrder,
         target: AccessibilityNodeInfo,
         filter: NodeFilter,
-        forward: Boolean
-    ): Boolean {
-        if (!order.isReordered) return false
+        forward: Boolean,
+        retry: () -> Unit,
+        owner: Any?
+    ): NavigationOutcome? {
         val nodes = order.nodes()
         val index = nodes.indexOf(target)
-        if (index < 0) return false
+        if (index < 0) return NavigationOutcome.UNAVAILABLE
+        if (!order.isReordered) return null
         val remaining = if (forward) nodes.drop(index + 1) else nodes.take(index).asReversed()
         val candidates = remaining.filter { filter.filter(it) }
         val next = candidates.firstOrNull()
         val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        var failedScroll = false
         for (ancestor in order.ancestorsOf(target)) {
             if (next != null && order.contains(ancestor, next)) break
             // A cross-subtree leaf constraint can leave and later re-enter a container.
             // Scroll only when its last eligible item in this direction is exhausted.
             if (candidates.any { order.contains(ancestor, it) }) continue
             if (ancestor.performAction(action)) {
-                callbackInterceptor.addCallback(object : CallbackInterceptor.Scroll(ancestor) {
+                callbackInterceptor.addCallback(object : CallbackInterceptor.Scroll(ancestor, owner) {
                     override fun invoke() {
-                        if (forward) moveFocusToNext() else moveFocusToPrevious()
+                        retry()
                     }
                 })
-                return true
+                return NavigationOutcome.SCROLL_PENDING
             }
+            if (ancestor.actionList.any { it.id == action }) failedScroll = true
         }
-        next?.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+        if (next != null) return focusOutcome(next, owner != null)
         // Ordered boundaries must not fall through to a structural successor/predecessor.
-        return true
+        return if (failedScroll) NavigationOutcome.ACTION_FAILED else NavigationOutcome.EXHAUSTED
     }
 
     fun moveFocusToPrevious(
         target: AccessibilityNodeInfo? = getTarget(),
-        nodeFilter: NodeFilter = NodeFilter.Focusable
-    ) {
-        val resolvedTarget = target ?: return
+        nodeFilter: NodeFilter = NodeFilter.Focusable,
+        onResult: ((NavigationOutcome) -> Unit)? = null,
+        canContinue: () -> Boolean = { true }
+    ): NavigationOutcome {
+        val resolvedTarget = target ?: return NavigationOutcome.UNAVAILABLE.also { onResult?.invoke(it) }
         val order = getTraversalOrder()
-        if (order != null && moveInOrder(order, resolvedTarget, nodeFilter, forward = false)) return
+        val retry = { if (canContinue()) moveFocusToPrevious(onResult = onResult, canContinue = canContinue); Unit }
+        if (order != null) moveInOrder(order, resolvedTarget, nodeFilter, forward = false, retry = retry, owner = onResult)?.let {
+            onResult?.invoke(it); return it
+        }
+        var outcome = NavigationOutcome.EXHAUSTED
+        fun requestFocus(node: AccessibilityNodeInfo, scope: NodeScanScope) {
+            outcome = focusOutcome(node, onResult != null)
+            scope.stop(node)
+        }
         nodeScan {
 
             resolvedTarget.ancestors {
@@ -97,43 +121,59 @@ class FocusController @Inject constructor(
                     recursive()
 
                     if (nodeFilter.filter(current)) {
-                        current.performFocus(this)
+                        requestFocus(current, this)
                     }
                 }
 
                 if (nodeFilter.filter(current)) {
-                    current.performFocus(this)
+                    requestFocus(current, this)
                 }
 
                 if (current.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) {
+                    outcome = NavigationOutcome.SCROLL_PENDING
 
                     callbackInterceptor.addCallback(
-                        object : CallbackInterceptor.Scroll(current) {
+                        object : CallbackInterceptor.Scroll(current, onResult) {
                             override fun invoke() {
-                                moveFocusToPrevious()
+                                retry()
                             }
                         }
                     )
 
                     this.stop()
                 }
+                if (current.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD }) {
+                    outcome = NavigationOutcome.ACTION_FAILED
+                }
             }
         }
+        onResult?.invoke(outcome)
+        return outcome
     }
 
     fun moveFocusToNext(
         target: AccessibilityNodeInfo? = getTarget(),
-        nodeFilter: NodeFilter = NodeFilter.Focusable
-    ) {
-        val resolvedTarget = target ?: return
+        nodeFilter: NodeFilter = NodeFilter.Focusable,
+        onResult: ((NavigationOutcome) -> Unit)? = null,
+        canContinue: () -> Boolean = { true }
+    ): NavigationOutcome {
+        val resolvedTarget = target ?: return NavigationOutcome.UNAVAILABLE.also { onResult?.invoke(it) }
         val order = getTraversalOrder()
-        if (order != null && moveInOrder(order, resolvedTarget, nodeFilter, forward = true)) return
+        val retry = { if (canContinue()) moveFocusToNext(onResult = onResult, canContinue = canContinue); Unit }
+        if (order != null) moveInOrder(order, resolvedTarget, nodeFilter, forward = true, retry = retry, owner = onResult)?.let {
+            onResult?.invoke(it); return it
+        }
+        var outcome = NavigationOutcome.EXHAUSTED
+        fun requestFocus(node: AccessibilityNodeInfo, scope: NodeScanScope) {
+            outcome = focusOutcome(node, onResult != null)
+            scope.stop(node)
+        }
         nodeScan {
 
             resolvedTarget.descendants(Direction.Right()) {
 
                 if (nodeFilter.filter(current)) {
-                    current.performFocus(this)
+                    requestFocus(current, this)
                 }
 
                 recursive()
@@ -148,26 +188,32 @@ class FocusController @Inject constructor(
                 ) {
 
                     if (nodeFilter.filter(current)) {
-                        current.performFocus(this)
+                        requestFocus(current, this)
                     }
 
                     recursive()
                 }
 
                 if (current.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+                    outcome = NavigationOutcome.SCROLL_PENDING
 
                     callbackInterceptor.addCallback(
-                        object : CallbackInterceptor.Scroll(current) {
+                        object : CallbackInterceptor.Scroll(current, onResult) {
                             override fun invoke() {
-                                moveFocusToNext()
+                                retry()
                             }
                         }
                     )
 
                     this.stop()
                 }
+                if (current.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD }) {
+                    outcome = NavigationOutcome.ACTION_FAILED
+                }
             }
         }
+        onResult?.invoke(outcome)
+        return outcome
     }
 
     fun moveFocusToFirst() {

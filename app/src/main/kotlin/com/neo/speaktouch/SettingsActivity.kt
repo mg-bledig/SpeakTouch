@@ -33,6 +33,8 @@ import com.neo.speaktouch.utils.SpeechPreferences
 class SettingsActivity : AppCompatActivity() {
     private lateinit var preferences: SpeechPreferences
     private lateinit var speakIds: SwitchCompat
+    private lateinit var audibleNavigation: SwitchCompat
+    private lateinit var hapticNavigation: SwitchCompat
     private lateinit var curtain: SwitchCompat
     private var syncingCurtain = false
     private var confirmation: AlertDialog? = null
@@ -70,6 +72,22 @@ class SettingsActivity : AppCompatActivity() {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             ViewCompat.setScreenReaderFocusable(this, true)
         })
+        audibleNavigation = SwitchCompat(this).apply {
+            setText(R.string.settings_audible_navigation_feedback)
+            minimumHeight = (48 * resources.displayMetrics.density).toInt()
+            isChecked = preferences.audibleNavigationFeedback
+            setOnCheckedChangeListener { _, enabled -> preferences.audibleNavigationFeedback = enabled }
+        }
+        rows.addView(audibleNavigation, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        hapticNavigation = SwitchCompat(this).apply {
+            setText(R.string.settings_haptic_navigation_feedback)
+            minimumHeight = (48 * resources.displayMetrics.density).toInt()
+            isChecked = preferences.hapticNavigationFeedback
+            setOnCheckedChangeListener { _, enabled -> preferences.hapticNavigationFeedback = enabled }
+        }
+        rows.addView(hapticNavigation, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         curtain = SwitchCompat(this).apply {
             setText(R.string.screen_curtain)
             minimumHeight = (48 * resources.displayMetrics.density).toInt()
@@ -106,6 +124,8 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         speakIds.isChecked = preferences.speakIds
+        audibleNavigation.isChecked = preferences.audibleNavigationFeedback
+        hapticNavigation.isChecked = preferences.hapticNavigationFeedback
         ScreenCurtainSession.observe(curtainChanged)
         syncCurtain()
     }

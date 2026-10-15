@@ -24,6 +24,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import com.neo.speaktouch.controller.ScreenCurtainController
 import com.neo.speaktouch.controller.ContextMenuController
+import com.neo.speaktouch.controller.BoundaryFeedbackController
 import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.RefocusController
 import com.neo.speaktouch.controller.ServiceController
@@ -40,10 +41,13 @@ class GestureInterceptor @Inject constructor(
     private val refocusController: RefocusController,
     private val speechController: SpeechController,
     private val contextMenuController: ContextMenuController? = null,
-    private val screenCurtainController: ScreenCurtainController? = null
+    private val screenCurtainController: ScreenCurtainController? = null,
+    private val boundaryFeedback: BoundaryFeedbackController? = null
 ) {
 
     fun handle(gestureId: Int): Boolean {
+        if (gestureId != AccessibilityService.GESTURE_SWIPE_LEFT &&
+            gestureId != AccessibilityService.GESTURE_SWIPE_RIGHT) boundaryFeedback?.cancel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             gestureId == AccessibilityService.GESTURE_2_FINGER_SINGLE_TAP) {
             speechController.togglePauseResume()
@@ -71,13 +75,15 @@ class GestureInterceptor @Inject constructor(
             AccessibilityService.GESTURE_SWIPE_DOWN -> return sliderController.adjust(increase = false)
 
             AccessibilityService.GESTURE_SWIPE_LEFT -> {
-                focusController.moveFocusToPrevious()
+                if (boundaryFeedback != null) boundaryFeedback.navigate(forward = false)
+                else focusController.moveFocusToPrevious()
 
                 return true
             }
 
             AccessibilityService.GESTURE_SWIPE_RIGHT -> {
-                focusController.moveFocusToNext()
+                if (boundaryFeedback != null) boundaryFeedback.navigate(forward = true)
+                else focusController.moveFocusToNext()
 
                 return true
             }

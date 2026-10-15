@@ -101,6 +101,16 @@ class VibratorController(
         )
     }
 
+    @Suppress("deprecation")
+    fun vibrateBoundary() {
+        val pattern = longArrayOf(0, 18, 30, 18)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val effect = VibrationEffect.createWaveform(pattern, -1)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_ACCESSIBILITY))
+            } else vibrator.vibrate(effect)
+        } else vibrator.vibrate(pattern, -1)
+    }
     fun hasVibrator() = vibrator.hasVibrator()
 
     fun finish() = vibrator.cancel()
