@@ -17,6 +17,7 @@
     -->
 
 <resources>
+    <string name="accessibility_service_description">O SpeakTouch é um leitor de tela para pessoas cegas ou com baixa visão. Ele lê o conteúdo da tela em voz alta e permite navegar e interagir usando gestos de toque.</string>
     <string name="menu_settings">Configurações</string>
     <string name="settings_title">Configurações do SpeakTouch</string>
     <string name="settings_speak_ids">Falar IDs</string>

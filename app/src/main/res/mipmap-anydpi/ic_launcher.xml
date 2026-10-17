@@ -1,0 +1,47 @@
+<!--
+    ~ SpeakTouch application icon.
+    ~
+    ~ Copyright (C) 2026 Michael G Bledig.
+    ~
+    ~ This program is free software: you can redistribute it and/or modify
+    ~ it under the terms of the GNU General Public License as published by
+    ~ the Free Software Foundation, either version 3 of the License.
+    ~
+    ~ This program is distributed in the hope that it will be useful,
+    ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+    ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    ~ GNU General Public License for more details.
+    ~
+    ~ You should have received a copy of the GNU General Public License
+    ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+    -->
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@color/ic_launcher_background"
+        android:pathData="M26,4 L82,4 Q104,4 104,26 L104,82 Q104,104 82,104 L26,104 Q4,104 4,82 L4,26 Q4,4 26,4 Z" />
+    <!-- Screen, pointing finger, and two sound waves. -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M37,29 L56,29 Q61,29 61,34 L61,64 Q61,69 56,69 L37,69 Q32,69 32,64 L32,34 Q32,29 37,29 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:strokeColor="@color/ic_launcher_background"
+        android:strokeWidth="2.5"
+        android:strokeLineJoin="round"
+        android:pathData="M48,79 L41,68 C37,62 37,60 39,59 C41,58 43,60 46,64 L46,46 C46,43 47.5,41.5 50,41.5 C52.5,41.5 54,43 54,46 L54,57 L58,55 C60,54 62,55 63,57 L68,65 C69,67 69,70 67,73 L63,80 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M68,36 C73,39 73,46 68,49 M74,30 C84,36 84,49 74,55" />
+</vector>

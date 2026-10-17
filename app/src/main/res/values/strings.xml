@@ -17,6 +17,7 @@
     -->
 
 <resources>
+    <string name="accessibility_service_description">SpeakTouch is a screen reader for blind and low-vision users. It reads screen content aloud and lets you navigate and interact using touch gestures.</string>
     <string name="app_name" translatable="false">Speak Touch</string>
     <string name="settings_title">SpeakTouch settings</string>
     <string name="settings_speak_ids">Speak IDs</string>

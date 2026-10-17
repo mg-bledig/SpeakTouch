@@ -24,7 +24,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SpeakTouch"
         tools:targetApi="34"
-        android:icon="@null"
+        android:icon="@mipmap/ic_launcher"
         android:memtagMode="async">
 
         <activity

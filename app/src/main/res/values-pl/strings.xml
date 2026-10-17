@@ -17,6 +17,7 @@
     -->
 
 <resources>
+    <string name="accessibility_service_description">SpeakTouch to czytnik ekranu dla osób niewidomych i słabowidzących. Odczytuje na głos zawartość ekranu oraz umożliwia nawigację i obsługę urządzenia za pomocą gestów dotykowych.</string>
     <string name="menu_settings">Ustawienia</string>
     <string name="settings_title">Ustawienia SpeakTouch</string>
     <string name="settings_speak_ids">Odczytuj identyfikatory</string>
