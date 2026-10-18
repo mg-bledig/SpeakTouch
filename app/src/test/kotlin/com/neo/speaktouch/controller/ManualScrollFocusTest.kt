@@ -18,6 +18,7 @@ package com.neo.speaktouch.controller
 
 import android.content.Context
 import android.media.AudioTrack
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -36,6 +37,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowAudioTrack
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [22, 28, 31], shadows = [NavigationAudioShadow::class, NavigationNodeShadow::class])
@@ -52,6 +54,7 @@ class ManualScrollFocusTest {
     private lateinit var wrapper: ServiceController
     private lateinit var callbacks: CallbackInterceptor
     private lateinit var scrollFeedback: ScrollFeedbackController
+    private lateinit var interpreter: ManualScrollInterpreter
     private lateinit var recovery: ManualScrollFocusController
     private val actions = mutableListOf<Pair<AccessibilityNodeInfo, Int>>()
     private var time = 1L
@@ -88,11 +91,25 @@ class ManualScrollFocusTest {
         event(AccessibilityEvent.TYPE_VIEW_SCROLLED, source).apply {
             scrollY = y; maxScrollY = 500; scrollX = 0; isScrollable = true
         }
-    private fun deliver(event: AccessibilityEvent) {
-        // Match production order: audio/classification, recovery, then navigation callbacks.
-        scrollFeedback.handle(event)
+    private fun horizontal(x: Int, content: Boolean = false) =
+        event(if (content) AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED else AccessibilityEvent.TYPE_VIEW_SCROLLED, container).apply {
+            scrollX = x; scrollY = 0; maxScrollX = 2000; maxScrollY = 0; isScrollable = true
+        }
+    private fun advance(milliseconds: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(milliseconds))
+    private fun prepareHorizontal() {
+        interpreter.start() // No prior scroll position: retain the controller's real focus history.
+        deliver(horizontal(496, content = true))
+        old.isVisibleToUser = false
+        focus(null)
+        deliver(event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED, old))
+    }
+    private fun deliver(event: AccessibilityEvent, settle: Boolean = true) {
+        // Match production order, including settled recovery rather than synchronous focus actions.
+        interpreter.handle(event)
         recovery.handle(event)
+        scrollFeedback.handle(event)
         callbacks.handle(event)
+        if (settle) shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ManualScrollFocusController.SETTLE_MS))
     }
     @Before fun setup() {
         context.getSharedPreferences(SpeechPreferences.FILE_NAME, Context.MODE_PRIVATE).edit().clear().commit()
@@ -113,10 +130,12 @@ class ManualScrollFocusTest {
         wrapper = ServiceController(service)
         callbacks = CallbackInterceptor()
         scrollFeedback = ScrollFeedbackController(wrapper, callbacks, context)
-        recovery = ManualScrollFocusController(wrapper, scrollFeedback)
+        interpreter = ManualScrollInterpreter(wrapper, callbacks)
+        recovery = ManualScrollFocusController(wrapper, interpreter)
         focus(old); recovery.start()
         deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START))
         deliver(scroll(100))
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_END))
         assertTrue(actions.isEmpty())
     }
     @After fun cleanup() {
@@ -197,6 +216,7 @@ class ManualScrollFocusTest {
         deliver(scroll(200)); deliver(scroll(250))
         assertTrue(retried); assertTrue(actions.isEmpty())
         deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START))
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_END))
         deliver(scroll(300))
         assertEquals(listOf(first to AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), actions)
     }
@@ -249,7 +269,8 @@ class ManualScrollFocusTest {
         deliver(scroll(200)); assertTrue(actions.isEmpty())
         focus(first); recovery.start(); first.isVisibleToUser = false
         deliver(scroll(300)); assertTrue(actions.isEmpty())
-        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START)); deliver(scroll(400))
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START))
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_END)); deliver(scroll(400))
         assertEquals(listOf(last to AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), actions)
     }
     @Test fun `recovery requests no click sound until normal focus event and duplicate event stays silent`() {
@@ -273,5 +294,113 @@ class ManualScrollFocusTest {
         } finally {
             movement.finish(); ShadowAudioTrack.removeAudioDataListener(recorder)
         }
+    }
+
+    @Test fun `first horizontal page uses content baseline and retained cleared focus ancestry`() {
+        prepareHorizontal()
+        deliver(horizontal(1056))
+        assertEquals(listOf(first to AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), actions)
+    }
+    @Test fun `reverse horizontal page chooses last eligible target`() {
+        prepareHorizontal()
+        deliver(horizontal(0))
+        assertEquals(listOf(last to AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), actions)
+    }
+    @Test fun `horizontal scroll preserves persistent valid focus`() {
+        interpreter.start(); deliver(horizontal(496, content = true)); deliver(horizontal(1056))
+        assertTrue(actions.isEmpty()); assertEquals(old, wrapper.getFocused())
+    }
+    @Test fun `first horizontal position alone does not guess direction`() {
+        interpreter.start(); old.isVisibleToUser = false; focus(null)
+        deliver(horizontal(1056))
+        assertTrue(actions.isEmpty())
+    }
+    @Test fun `recovery waits for touch end and quiet settling`() {
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START))
+        prepareHorizontal()
+        deliver(horizontal(1056), settle = false)
+        advance(500)
+        assertTrue(actions.isEmpty())
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_END), settle = false)
+        advance(100); assertTrue(actions.isEmpty())
+        advance(100)
+        assertEquals(listOf(first to AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), actions)
+    }
+    @Test fun `latest scroll replaces pending direction and extends settling without backlog`() {
+        prepareHorizontal()
+        deliver(horizontal(1056), settle = false)
+        advance(100); assertTrue(actions.isEmpty())
+        deliver(horizontal(496), settle = false)
+        advance(100); assertTrue(actions.isEmpty()) // Original deadline has passed.
+        advance(100)
+        assertEquals(listOf(last to AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS), actions)
+        advance(1000); assertEquals(1, actions.size)
+    }
+    @Test fun `new user focus during settling cancels pending recovery`() {
+        prepareHorizontal(); deliver(horizontal(1056), settle = false)
+        val outside = node("Outside"); nodeShadow(root).addChild(outside); focus(outside)
+        deliver(event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, outside))
+        advance(500); assertTrue(actions.isEmpty()); assertEquals(outside, wrapper.getFocused())
+    }
+    @Test fun `new touch cancels pending recovery without resuming stale request at touch end`() {
+        prepareHorizontal(); deliver(horizontal(1056), settle = false)
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START))
+        deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_END))
+        advance(500); assertTrue(actions.isEmpty())
+    }
+    @Test fun `new touch during provider validation invalidates in flight recovery`() {
+        prepareHorizontal()
+        NavigationNodeShadow.refreshBehaviors[first] = {
+            deliver(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START), settle = false)
+            true
+        }
+        deliver(horizontal(1056))
+        assertTrue(actions.isEmpty())
+    }
+    @Test fun `window change during settling cancels request`() {
+        prepareHorizontal(); deliver(horizontal(1056), settle = false)
+        deliver(event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)); advance(500)
+        assertTrue(actions.isEmpty())
+    }
+    @Test fun `root replacement without a window event still rejects pending recovery`() {
+        prepareHorizontal(); deliver(horizontal(1056), settle = false)
+        service.root = node(); advance(500)
+        assertTrue(actions.isEmpty())
+    }
+    @Test fun `container becoming stale during settling prevents focus action`() {
+        prepareHorizontal(); deliver(horizontal(1056), settle = false)
+        // The pending request retains event.getSource(), a copy. Model the provider
+        // disappearing for that node identity, not only the original shadow instance.
+        NavigationNodeShadow.refreshBehaviors[container] = { false }
+        assertFalse(AccessibilityNodeInfo.obtain(container).refresh())
+        advance(500)
+        assertTrue(actions.isEmpty())
+    }
+    @Test fun `candidate becoming stale during final validation is not focused`() {
+        prepareHorizontal()
+        var refreshes = 0
+        NavigationNodeShadow.refreshBehaviors[first] = { ++refreshes == 1 }
+        deliver(horizontal(1056))
+        assertTrue(actions.isEmpty())
+    }
+    @Test fun `helper registered during settling cancels manual recovery`() {
+        prepareHorizontal(); deliver(horizontal(1056), settle = false)
+        callbacks.addCallback(object : CallbackInterceptor.Scroll(container) { override fun invoke() = Unit })
+        advance(500); assertTrue(actions.isEmpty())
+    }
+    @Test fun `horizontal navigation helper and its tail do not recover focus`() {
+        prepareHorizontal()
+        callbacks.addCallback(object : CallbackInterceptor.Scroll(container) { override fun invoke() = Unit })
+        deliver(horizontal(1056)); deliver(horizontal(1600))
+        assertTrue(actions.isEmpty())
+    }
+    @Test fun `finish cancels queued recovery`() {
+        prepareHorizontal(); deliver(horizontal(1056), settle = false)
+        recovery.finish(); advance(500); assertTrue(actions.isEmpty())
+    }
+    @Test fun `page announcement alone cannot trigger focus recovery`() {
+        prepareHorizontal()
+        deliver(event(AccessibilityEvent.TYPE_ANNOUNCEMENT, container).apply { text.add("Page 2 of 6") })
+        advance(500); assertTrue(actions.isEmpty())
     }
 }

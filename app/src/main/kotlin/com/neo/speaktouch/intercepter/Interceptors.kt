@@ -19,6 +19,7 @@
 package com.neo.speaktouch.intercepter
 
 import com.neo.speaktouch.controller.ManualScrollFocusController
+import com.neo.speaktouch.controller.ManualScrollInterpreter
 import com.neo.speaktouch.controller.ScrollFeedbackController
 import com.neo.speaktouch.controller.BoundaryFeedbackController
 import com.neo.speaktouch.intercepter.event.CallbackInterceptor
@@ -41,10 +42,13 @@ class Interceptors @Inject constructor(
     val boundaryFeedback: BoundaryFeedbackController,
     val scrollFeedback: ScrollFeedbackController,
     val manualScrollFocus: ManualScrollFocusController,
+    val manualScrollInterpreter: ManualScrollInterpreter,
     val focus: FocusInterceptor,
     val haptic: HapticInterceptor,
     val callback : CallbackInterceptor,
     val gesture: GestureInterceptor
 ) {
-    val event = listOf(speech, progress, progressTones, navigationSound, boundaryFeedback, scrollFeedback, manualScrollFocus, focus, haptic, callback)
+    // Record focus ancestry before speech/provider work; inspect helper ownership before callbacks consume it.
+    val event = listOf(manualScrollInterpreter, manualScrollFocus, speech, progress, progressTones,
+        navigationSound, boundaryFeedback, scrollFeedback, focus, haptic, callback)
 }

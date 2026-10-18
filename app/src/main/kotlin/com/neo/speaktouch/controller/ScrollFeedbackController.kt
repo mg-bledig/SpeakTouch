@@ -50,24 +50,10 @@ class ScrollFeedbackController @Inject constructor(
     private var activeRoot: AccessibilityNodeInfo? = null
     private var activeWindow: Int? = null
     private var finished = false
-    private var manualScroll: ConfirmedManualScroll? = null
-
-    /** Read-only classification for the next interceptor; independent of audio settings/throttling. */
-    internal data class ConfirmedManualScroll(
-        val source: AccessibilityNodeInfo, val root: AccessibilityNodeInfo,
-        val windowId: Int, val eventTime: Long, val forward: Boolean
-    )
-
-    internal fun confirmedManualScroll(event: AccessibilityEvent): ConfirmedManualScroll? =
-        manualScroll?.takeIf {
-            event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED && event.eventTime == it.eventTime &&
-                event.windowId == it.windowId && event.source == it.source
-        }
 
     fun start() { reset(); lastSubmissionAt = null; finished = false }
 
     override fun handle(event: AccessibilityEvent) {
-        manualScroll = null
         if (finished) return
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> { reset(); return }
@@ -101,9 +87,6 @@ class ScrollFeedbackController @Inject constructor(
             // All valid events update state, including silent/throttled/helper events.
             state = ScrollState(metadata, normalized, movement ?: previous?.lastDirection)
             if (node in helperScrolls) { player.stop(); return }
-            if (movement != null) {
-                manualScroll = ConfirmedManualScroll(node, root, event.windowId, event.eventTime, movement > 0)
-            }
             if (!preferences.audibleNavigationFeedback) { player.stop(); return }
             if (normalized == null) { player.stop(); return }
             if (previous != null && (previous.normalized == null ||
@@ -210,7 +193,6 @@ class ScrollFeedbackController @Inject constructor(
     }
 
     private fun reset() {
-        manualScroll = null
         player.stop(); state = null; helperScrolls.clear()
         activeSource = null; activeRoot = null; activeWindow = null
         // Preserve only the global audio separation clock across source/window changes.

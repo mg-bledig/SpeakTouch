@@ -136,6 +136,7 @@ class SpeakTouchService : AccessibilityService () {
 
     @Deprecated("Deprecated in Java")
     override fun onGesture(gestureId: Int): Boolean {
+        if (::screenChangeController.isInitialized) screenChangeController.cancelPageFeedback()
         return interceptors.gesture.handle(gestureId)
     }
 }
