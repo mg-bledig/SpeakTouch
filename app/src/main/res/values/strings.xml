@@ -30,6 +30,7 @@
     <string name="text_radio_type">option button</string>
     <string name="text_checkbox_type">checkbox</string>
     <string name="text_button_type">button</string>
+    <string name="text_link_type">link</string>
     <string name="text_slider_type">slider</string>
     <string name="text_progress_bar_type">progress bar</string>
     <string name="text_editfield_type">edit field</string>

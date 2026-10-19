@@ -21,7 +21,6 @@ package com.neo.speaktouch.utils
 import android.content.Context
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.model.Type
-import com.neo.speaktouch.model.toTypeText
 import com.neo.speaktouch.utils.extension.getAssociatedLabels
 import com.neo.speaktouch.utils.extension.getContent
 import com.neo.speaktouch.utils.extension.isNotNullOrEmpty
@@ -106,8 +105,8 @@ class Reader @Inject constructor(
                 add(content)
             }
 
-            if (options.mustReadType && type != null) {
-                type.toTypeText()?.let {
+            if (options.mustReadType) {
+                NodeRoleDescription.get(node, type)?.let {
                     add(it.resolved(context))
                 }
             }
