@@ -22,6 +22,7 @@ package com.neo.speaktouch.intercepter.event
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.neo.speaktouch.controller.EditingFeedbackController
 import com.neo.speaktouch.controller.SpeechController
 import com.neo.speaktouch.controller.ScreenChangeController
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
@@ -34,11 +35,16 @@ import javax.inject.Inject
 @ServiceScoped
 class SpeechInterceptor @Inject constructor(
     private val speech: SpeechController,
-    private val screenChanges: ScreenChangeController? = null
+    private val screenChanges: ScreenChangeController? = null,
+    private val editing: EditingFeedbackController? = null
 ) : EventInterceptor {
+    fun start() { editing?.start() }
+    fun clearEditing() { editing?.finish() }
+
     override fun handle(event: AccessibilityEvent) {
         if (event.isTouchInteractionStart) {
             speech.onTouchStart()
+            editing?.onEvent(event)
             return
         }
 
@@ -50,6 +56,8 @@ class SpeechInterceptor @Inject constructor(
             speech.onGestureDetectionStart()
             return
         }
+        val editingSpoken = editing?.onEvent(event) == true
+
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
@@ -61,7 +69,7 @@ class SpeechInterceptor @Inject constructor(
         if (event.isAccessibilityFocused) {
             speech.cancelResume()
             val node = AccessibilityNodeInfoCompat.wrap(event.source ?: return)
-            if (screenChanges?.onFocused(node) != true) speech.speak(node)
+            if (!editingSpoken && screenChanges?.onFocused(node) != true) speech.speak(node)
         }
     }
 
@@ -69,6 +77,7 @@ class SpeechInterceptor @Inject constructor(
 
         Timber.i("finish")
 
+        editing?.finish()
         speech.shutdown()
     }
 }

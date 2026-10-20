@@ -76,4 +76,5 @@
     <string name="menu_copied">Skopiowano</string>
     <string name="menu_copy_unavailable">Kopiowanie niedostępne</string>
     <string name="menu_copy_failed">Kopiowanie nie powiodło się</string>
+    <string name="text_editing">Edycja</string>
 </resources>

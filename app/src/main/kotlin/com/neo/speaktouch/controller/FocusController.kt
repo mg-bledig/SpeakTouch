@@ -34,6 +34,7 @@ class FocusController @Inject constructor(
     private val callbackInterceptor: CallbackInterceptor,
     private val serviceController: ServiceController
 ) {
+    internal val webNavigation = WebNavigationController(serviceController, callbackInterceptor)
     private val forwardProgress = ForwardScrollProgress()
 
     fun clearForwardScrollProofs() = forwardProgress.clear()
@@ -91,7 +92,7 @@ class FocusController @Inject constructor(
     private fun getTraversalOrder(): TraversalOrder? =
         serviceController.getOrThrow().rootInActiveWindow?.let { TraversalOrder(it) }
 
-    enum class NavigationOutcome { FOCUS_REQUESTED, SCROLL_PENDING, EXHAUSTED, UNAVAILABLE, ACTION_FAILED }
+    enum class NavigationOutcome { PROVIDER_HANDLED, FOCUS_REQUESTED, SCROLL_PENDING, EXHAUSTED, UNAVAILABLE, ACTION_FAILED }
 
     private fun focusOutcome(node: AccessibilityNodeInfo, validate: Boolean = false): NavigationOutcome {
         if (validate && (!node.refresh() || !node.isVisibleToUser || !NodeFilter.Focusable.filter(node))) {
@@ -116,23 +117,29 @@ class FocusController @Inject constructor(
         fun current(): Boolean = canContinue() && serviceController.getRoot() == root &&
             serviceController.getRoot()?.windowId == window && serviceController.getFocused() == origin &&
             origin.refresh() && origin.isAccessibilityFocused && origin.windowId == window &&
-            NodeFilter.Focusable.filter(origin)
+            navigationOrigin(origin)
         return try {
             if (!current()) return NavigationOutcome.UNAVAILABLE
             val order = TraversalOrder(root)
             if (origin !in order.nodes()) return NavigationOutcome.UNAVAILABLE
             val nodes = if (forward) order.nodes() else order.nodes().asReversed()
             val target = nodes.firstOrNull {
-                it != root && it.refresh() && it.windowId == window &&
-                    it.packageName?.toString() == root.packageName?.toString() && NodeFilter.Focusable.filter(it) &&
-                    isUsableTarget(it)
+                (it != root || webNavigation.isContainer(it)) && it.refresh() && it.windowId == window &&
+                    it.packageName?.toString() == root.packageName?.toString() && navigationCandidate(it) &&
+                    (webNavigation.isContainer(it) || isUsableTarget(it))
             } ?: return NavigationOutcome.EXHAUSTED
             // A single eligible target is not a focus movement or a reason to re-read it.
             if (target == origin) return NavigationOutcome.EXHAUSTED
-            if (!target.refresh() || !NodeFilter.Focusable.filter(target) || !isUsableTarget(target) || target.windowId != window ||
+            if (!target.refresh() || !navigationCandidate(target) || (!webNavigation.isContainer(target) && !isUsableTarget(target)) || target.windowId != window ||
                 target.packageName?.toString() != root.packageName?.toString() ||
                 !TraversalOrder(root).contains(root, target) || !current()) return NavigationOutcome.UNAVAILABLE
-            focusOutcome(target)
+            if (webNavigation.isContainer(target)) {
+                when (webNavigation.navigate(target, forward, entering = true)) {
+                    WebNavigationController.Result.ACCEPTED -> NavigationOutcome.PROVIDER_HANDLED
+                    WebNavigationController.Result.EXHAUSTED -> NavigationOutcome.EXHAUSTED
+                    else -> NavigationOutcome.UNAVAILABLE
+                }
+            } else enter(target, forward, false)
         } catch (_: RuntimeException) {
             NavigationOutcome.UNAVAILABLE
         }
@@ -146,7 +153,9 @@ class FocusController @Inject constructor(
         retry: () -> Unit,
         owner: Any?,
         canContinue: () -> Boolean = { true },
-        onResult: ((NavigationOutcome) -> Unit)? = null
+        onResult: ((NavigationOutcome) -> Unit)? = null,
+        skipDescendants: Boolean = false,
+        scrollOrigin: AccessibilityNodeInfo = target
     ): NavigationOutcome? {
         val nodes = order.nodes()
         val index = nodes.indexOf(target)
@@ -157,7 +166,9 @@ class FocusController @Inject constructor(
             return null
         }
         val remaining = if (forward) nodes.drop(index + 1) else nodes.take(index).asReversed()
-        val candidates = remaining.filter { filter.filter(it) }
+        val candidates = remaining.filter {
+            (!skipDescendants || !order.contains(target, it)) && navigationCandidate(it, filter)
+        }
         val next = candidates.firstOrNull()
         val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
@@ -168,7 +179,7 @@ class FocusController @Inject constructor(
             // Scroll only when its last eligible item in this direction is exhausted.
             if (candidates.any { order.contains(ancestor, it) }) continue
             if (forward) {
-                when (val result = scrollForward(ancestor, target, retry, owner, canContinue, onResult)) {
+                when (val result = scrollForward(ancestor, scrollOrigin, retry, owner, canContinue, onResult)) {
                     NavigationOutcome.SCROLL_PENDING -> return result
                     NavigationOutcome.ACTION_FAILED -> failedScroll = true
                     else -> Unit
@@ -188,12 +199,63 @@ class FocusController @Inject constructor(
                 failedScroll = true
             }
         }
-        if (next != null) return focusOutcome(next, owner != null)
+        if (next != null) return enter(next, forward, owner != null)
         // Ordered boundaries must not fall through to a structural successor/predecessor.
         return if (failedScroll) NavigationOutcome.ACTION_FAILED else NavigationOutcome.EXHAUSTED
     }
 
-    fun moveFocusToPrevious(
+    internal fun navigationOrigin(node: AccessibilityNodeInfo): Boolean {
+        val root = serviceController.getRoot() ?: return false
+        return if (webNavigation.supports(node)) webNavigation.valid(node, root)
+            else node.isVisibleToUser && NodeFilter.Focusable.filter(node)
+    }
+
+    /** Native traversal sees a provider-owned WebView as one directional entry point. */
+    internal fun navigationCandidate(node: AccessibilityNodeInfo, filter: NodeFilter = NodeFilter.Focusable): Boolean {
+        if (webNavigation.isDocumentHost(node)) return false
+        if (!webNavigation.supports(node)) return filter.filter(node)
+        val root = serviceController.getRoot() ?: return false
+        return webNavigation.isContainer(node) && webNavigation.valid(node, root)
+    }
+
+    private fun enter(node: AccessibilityNodeInfo, forward: Boolean, validate: Boolean): NavigationOutcome {
+        val webContainer = webNavigation.isContainer(node)
+        if (!webContainer || forward) return focusOutcome(node, validate && !webContainer)
+        return when (webNavigation.navigate(node, forward = false, entering = true)) {
+            WebNavigationController.Result.ACCEPTED -> NavigationOutcome.PROVIDER_HANDLED
+            WebNavigationController.Result.EXHAUSTED -> focusOutcome(node)
+            else -> NavigationOutcome.UNAVAILABLE
+        }
+    }
+
+    fun moveFocusToNext(target: AccessibilityNodeInfo? = getTarget(), nodeFilter: NodeFilter = NodeFilter.Focusable,
+        onResult: ((NavigationOutcome) -> Unit)? = null, canContinue: () -> Boolean = { true }): NavigationOutcome =
+        moveSequential(target, nodeFilter, true, onResult, canContinue)
+
+    fun moveFocusToPrevious(target: AccessibilityNodeInfo? = getTarget(), nodeFilter: NodeFilter = NodeFilter.Focusable,
+        onResult: ((NavigationOutcome) -> Unit)? = null, canContinue: () -> Boolean = { true }): NavigationOutcome =
+        moveSequential(target, nodeFilter, false, onResult, canContinue)
+
+    private fun moveSequential(target: AccessibilityNodeInfo?, filter: NodeFilter, forward: Boolean,
+        onResult: ((NavigationOutcome) -> Unit)?, canContinue: () -> Boolean): NavigationOutcome {
+        if (!canContinue()) return NavigationOutcome.UNAVAILABLE.also { onResult?.invoke(it) }
+        var pivot = target
+        var outsideWeb = false
+        if (target != null && webNavigation.supports(target)) {
+            when (webNavigation.navigate(target, forward)) {
+                WebNavigationController.Result.ACCEPTED ->
+                    return NavigationOutcome.PROVIDER_HANDLED.also { onResult?.invoke(it) }
+                WebNavigationController.Result.EXHAUSTED -> {
+                    pivot = webNavigation.boundary(target); outsideWeb = true
+                }
+                else -> return NavigationOutcome.UNAVAILABLE.also { onResult?.invoke(it) }
+            }
+        } else webNavigation.clear()
+        return if (forward) moveNativeNext(pivot, filter, onResult, canContinue, skipDescendants = outsideWeb)
+            else moveNativePrevious(pivot, filter, onResult, canContinue)
+    }
+
+    private fun moveNativePrevious(
         target: AccessibilityNodeInfo? = getTarget(),
         nodeFilter: NodeFilter = NodeFilter.Focusable,
         onResult: ((NavigationOutcome) -> Unit)? = null,
@@ -208,7 +270,7 @@ class FocusController @Inject constructor(
         }
         var outcome = NavigationOutcome.EXHAUSTED
         fun requestFocus(node: AccessibilityNodeInfo, scope: NodeScanScope) {
-            outcome = focusOutcome(node, onResult != null)
+            outcome = enter(node, false, onResult != null)
             scope.stop(node)
         }
         nodeScan {
@@ -221,14 +283,17 @@ class FocusController @Inject constructor(
                     )
                 ) {
 
-                    recursive()
+                    if (webNavigation.isContainer(current) && navigationCandidate(current, nodeFilter)) {
+                        requestFocus(current, this)
+                    }
+                    if (!webNavigation.supports(current)) recursive()
 
-                    if (nodeFilter.filter(current)) {
+                    if (navigationCandidate(current, nodeFilter)) {
                         requestFocus(current, this)
                     }
                 }
 
-                if (nodeFilter.filter(current)) {
+                if (navigationCandidate(current, nodeFilter)) {
                     requestFocus(current, this)
                 }
 
@@ -255,14 +320,16 @@ class FocusController @Inject constructor(
         return outcome
     }
 
-    fun moveFocusToNext(
+    private fun moveNativeNext(
         target: AccessibilityNodeInfo? = getTarget(),
         nodeFilter: NodeFilter = NodeFilter.Focusable,
         onResult: ((NavigationOutcome) -> Unit)? = null,
-        canContinue: () -> Boolean = { true }
+        canContinue: () -> Boolean = { true },
+        skipDescendants: Boolean = false
     ): NavigationOutcome {
         val resolvedTarget = target ?: return NavigationOutcome.UNAVAILABLE.also { onResult?.invoke(it) }
-        forwardProgress.begin(serviceController.getRoot(), resolvedTarget, nodeFilter)
+        val navigationOrigin = if (skipDescendants) serviceController.getFocused() ?: resolvedTarget else resolvedTarget
+        forwardProgress.begin(serviceController.getRoot(), navigationOrigin, nodeFilter)
         val order = getTraversalOrder()
         val retry = {
             val allowed = canContinue()
@@ -270,23 +337,24 @@ class FocusController @Inject constructor(
             Unit
         }
         if (order != null) moveInOrder(order, resolvedTarget, nodeFilter, forward = true, retry = retry,
-            owner = onResult, canContinue = canContinue, onResult = onResult)?.let {
+            owner = onResult, canContinue = canContinue, onResult = onResult,
+            skipDescendants = skipDescendants, scrollOrigin = navigationOrigin)?.let {
             onResult?.invoke(it); return it
         }
         var outcome = NavigationOutcome.EXHAUSTED
         fun requestFocus(node: AccessibilityNodeInfo, scope: NodeScanScope) {
-            outcome = focusOutcome(node, onResult != null)
+            outcome = enter(node, true, onResult != null)
             scope.stop(node)
         }
         nodeScan {
 
-            resolvedTarget.descendants(Direction.Right()) {
+            if (!skipDescendants && !webNavigation.supports(resolvedTarget)) resolvedTarget.descendants(Direction.Right()) {
 
-                if (nodeFilter.filter(current)) {
+                if (navigationCandidate(current, nodeFilter)) {
                     requestFocus(current, this)
                 }
 
-                recursive()
+                if (!webNavigation.supports(current)) recursive()
             }
 
             resolvedTarget.ancestors {
@@ -297,14 +365,14 @@ class FocusController @Inject constructor(
                     )
                 ) {
 
-                    if (nodeFilter.filter(current)) {
+                    if (navigationCandidate(current, nodeFilter)) {
                         requestFocus(current, this)
                     }
 
-                    recursive()
+                    if (!webNavigation.supports(current)) recursive()
                 }
 
-                when (val result = scrollForward(current, resolvedTarget, retry, onResult, canContinue, onResult)) {
+                when (val result = scrollForward(current, navigationOrigin, retry, onResult, canContinue, onResult)) {
                     NavigationOutcome.SCROLL_PENDING -> { outcome = result; this.stop() }
                     NavigationOutcome.ACTION_FAILED -> outcome = result
                     else -> Unit

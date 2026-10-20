@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpeakTouch Accessibility Test</title>
+  <style>
+    body { font-family: sans-serif; margin: 1rem; line-height: 1.4; }
+    h1 { font-size: 1.4rem; }
+    p { margin: 0.75rem 0; }
+    fieldset { margin: 0.75rem 0; }
+    input[type="text"] { max-width: 100%; box-sizing: border-box; }
+    #activation-status:target { outline: 2px solid; }
+  </style>
+</head>
+<body>
+  <h1>SpeakTouch Accessibility Test</h1>
+  <p>This page tests how screen readers identify and navigate web elements.</p>
+
+  <p><a id="example-link" href="#activation-status">Example link</a></p>
+
+  <p><input id="ham" type="checkbox"> <label for="ham">Ham</label></p>
+
+  <fieldset>
+    <legend>Delivery method</legend>
+    <p><input id="delivery-post" type="radio" name="delivery" value="post">
+      <label for="delivery-post">Delivery by post</label></p>
+    <p><input id="delivery-person" type="radio" name="delivery" value="person">
+      <label for="delivery-person">Collect in person</label></p>
+  </fieldset>
+
+  <p><label for="your-name">Your name</label><br>
+    <input id="your-name" type="text"></p>
+
+  <p><button id="test-button" type="button">Test button</button></p>
+
+  <ul>
+    <li>Apples</li>
+    <li>Bananas</li>
+  </ul>
+
+  <p id="activation-status">Activation: none.</p>
+
+  <script>
+    const activationStatus = document.getElementById('activation-status');
+    let buttonActivations = 0;
+    document.getElementById('example-link').addEventListener('click', function () {
+      activationStatus.textContent = 'Example link activated.';
+    });
+    document.getElementById('test-button').addEventListener('click', function () {
+      buttonActivations += 1;
+      activationStatus.textContent = 'Test button activations: ' + buttonActivations + '.';
+    });
+  </script>
+</body>
+</html>

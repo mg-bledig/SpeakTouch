@@ -50,6 +50,7 @@ class Reader @Inject constructor(
         val type = Type.get(node)
 
         val ownContent = getContent(type)
+        val supplementalDescription = SupplementalDescription.get(node)
         // Keep content separate from rendered roles/states for associated-label comparison.
         val contentLabels = mutableListOf<CharSequence>()
         val composeGroup = (grouped || isScreenReaderFocusable) &&
@@ -72,11 +73,15 @@ class Reader @Inject constructor(
         }
 
         val associatedLabels = associatedLabelContent(node, node.getAssociatedLabels(), contentLabels)
+        val supplemental = supplementalDescription?.takeUnless { description ->
+            (ancestorLabels + contentLabels + associatedLabels).any { containsLabel(it, description) }
+        }
         // Only fill a missing content slot. App text, hints, labels and grouped content win.
         val hasOwnPrimaryContent = text?.isNotBlank() == true ||
             (type !is Type.EditField && contentDescription?.isNotBlank() == true) ||
             (isEditable && hintText?.isNotBlank() == true)
-        val needsName = !hasOwnPrimaryContent && content.isNullOrBlank() && associatedLabels.isEmpty()
+        val needsName = !hasOwnPrimaryContent && content.isNullOrBlank() && associatedLabels.isEmpty() &&
+                supplementalDescription == null
         val savedCustomLabel = if (needsName) CustomLabelKey.from(node)?.let(customLabels::get) else null
         val customLabel = savedCustomLabel?.takeUnless { label ->
             ancestorLabels.any { containsLabel(it, label) }
@@ -90,12 +95,18 @@ class Reader @Inject constructor(
         } else null
         spokenContent?.addAll(associatedLabels)
         spokenContent?.addAll(contentLabels)
+        supplemental?.let { spokenContent?.add(it) }
         customLabel?.let { spokenContent?.add(it) }
         idLabel?.let { spokenContent?.add(it) }
 
         buildList {
 
             addAll(associatedLabels)
+
+            // A web field can expose its name here while text holds the entered value.
+            // Keep that name before the value without changing native getContent rules.
+            val editable = isEditable || type is Type.EditField
+            if (editable && supplemental != null) add(supplemental)
 
             if (customLabel != null) {
                 add(customLabel)
@@ -104,6 +115,8 @@ class Reader @Inject constructor(
             } else if (content.isNotNullOrEmpty()) {
                 add(content)
             }
+
+            if (!editable && supplemental != null) add(supplemental)
 
             if (options.mustReadType) {
                 NodeRoleDescription.get(node, type)?.let {

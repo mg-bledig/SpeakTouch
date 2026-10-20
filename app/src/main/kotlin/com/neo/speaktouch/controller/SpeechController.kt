@@ -23,9 +23,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.model.Text
-import com.neo.speaktouch.utils.Node
 import com.neo.speaktouch.utils.Reader
-import timber.log.Timber
 
 class SpeechController(
     private val textToSpeech: TextToSpeech,
@@ -72,7 +70,6 @@ class SpeechController(
     }
 
     @Synchronized private fun speak(text: CharSequence) {
-        Timber.i("speak:  \"$text\"")
         clearState()
         val saved = text.toString()
         if (saved.isEmpty()) {
@@ -88,7 +85,6 @@ class SpeechController(
     fun speak(text: Text) = speak(text.resolved(context))
 
     fun speak(nodeInfo: AccessibilityNodeInfoCompat, contextPrefix: List<String> = emptyList()) {
-        Node.log(nodeInfo)
         val description = reader.read(nodeInfo)
         if (contextPrefix.isEmpty()) { speak(description); return }
         val content = reader.read(nodeInfo, Reader.Options(mustReadState = false, mustReadType = false))

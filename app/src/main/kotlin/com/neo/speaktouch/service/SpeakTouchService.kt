@@ -37,7 +37,6 @@ import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
 import com.neo.speaktouch.utils.extension.addFlags
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import timber.log.Timber
 
 @AndroidEntryPoint
 class SpeakTouchService : AccessibilityService () {
@@ -66,6 +65,8 @@ class SpeakTouchService : AccessibilityService () {
     override fun onServiceConnected() {
         super.onServiceConnected()
         if (::interceptors.isInitialized) interceptors.navigationSound.onServiceConnected()
+        if (::interceptors.isInitialized) interceptors.speech.start()
+        if (::interceptors.isInitialized) interceptors.checkState.start()
         if (::interceptors.isInitialized) interceptors.boundaryFeedback.start()
         if (::interceptors.isInitialized) interceptors.scrollFeedback.start()
         if (::interceptors.isInitialized) interceptors.manualScrollFocus.start()
@@ -92,8 +93,6 @@ class SpeakTouchService : AccessibilityService () {
         contextMenuController.onEvent(event)
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                val windowTitle = event.text.joinToString(" ").ifEmpty { "Unknown window" }
-                Timber.d("New window detected: $windowTitle")
                 if (contextMenuController.shouldInitializeFocus(event)) focusController.moveFocusToFirst()
             }
         }
@@ -116,6 +115,8 @@ class SpeakTouchService : AccessibilityService () {
 
     override fun onUnbind(intent: Intent?): Boolean {
         if (::interceptors.isInitialized) interceptors.navigationSound.finish()
+        if (::interceptors.isInitialized) interceptors.speech.clearEditing()
+        if (::interceptors.isInitialized) interceptors.checkState.finish()
         if (::interceptors.isInitialized) interceptors.boundaryFeedback.finish()
         if (::interceptors.isInitialized) interceptors.scrollFeedback.finish()
         if (::interceptors.isInitialized) interceptors.manualScrollFocus.finish()

@@ -21,7 +21,7 @@ package com.neo.speaktouch.intercepter.event
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
-import com.neo.speaktouch.utils.Node
+import com.neo.speaktouch.model.Type
 import com.neo.speaktouch.utils.NodeValidator
 import com.neo.speaktouch.utils.extension.getNearestAncestor
 import dagger.hilt.android.scopes.ServiceScoped
@@ -37,6 +37,12 @@ class FocusInterceptor @Inject constructor() : EventInterceptor {
 
         Timber.d("event: ${AccessibilityEvent.eventTypeToString(event.eventType)}")
 
+        // A focused checkbox/radio reports its new state without another focus action.
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED && nodeInfo.isAccessibilityFocused) {
+            val type = Type.get(nodeInfo)
+            if (type == Type.Checkable.Checkbox || type == Type.Checkable.Radio) return
+        }
+
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_HOVER_ENTER,
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
@@ -51,8 +57,6 @@ class FocusInterceptor @Inject constructor() : EventInterceptor {
     private fun handlerAccessibilityNode(
         nodeInfo: AccessibilityNodeInfoCompat
     ) {
-
-        Node.log(nodeInfo)
 
         getFocusableNode(nodeInfo)?.performAction(
             AccessibilityNodeInfoCompat.ACTION_ACCESSIBILITY_FOCUS

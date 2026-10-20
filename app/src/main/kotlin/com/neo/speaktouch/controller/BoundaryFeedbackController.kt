@@ -21,7 +21,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
-import com.neo.speaktouch.model.NodeFilter
 import com.neo.speaktouch.utils.TraversalOrder
 import com.neo.speaktouch.utils.SpeechPreferences
 import com.neo.speaktouch.utils.Reader
@@ -73,8 +72,8 @@ class BoundaryFeedbackController @Inject constructor(
             armedEdge = null
         }
         fun current(): Boolean = try {
-            !finished && target.refresh() && target.isVisibleToUser && target.isAccessibilityFocused &&
-                NodeFilter.Focusable.filter(target) &&
+            !finished && target.refresh() && target.isAccessibilityFocused &&
+                focus.navigationOrigin(target) &&
                 target.windowId == window && service.getRoot() == root &&
                 service.getRoot()?.windowId == window && service.getFocused() == target
         } catch (_: RuntimeException) { false }
@@ -165,17 +164,24 @@ class BoundaryFeedbackController @Inject constructor(
     private fun stillExhausted(root: AccessibilityNodeInfo, target: AccessibilityNodeInfo, forward: Boolean): Boolean {
         val order = TraversalOrder(root)
         val nodes = order.nodes()
-        val index = nodes.indexOf(target)
+        val web = focus.webNavigation
+        val container = web.boundary(target)
+        // Native tree exhaustion cannot prove the end of provider-owned web content.
+        if (container != null && !web.exhausted(root, target, forward)) return false
+        val pivot = container ?: target
+        val index = nodes.indexOf(pivot)
         if (index < 0) {
             return false
         }
         val remaining = if (forward) nodes.drop(index + 1) else nodes.take(index)
-        val next = remaining.firstOrNull { NodeFilter.Focusable.filter(it) }
+        val next = remaining.firstOrNull {
+            (container == null || !order.contains(container, it)) && focus.navigationCandidate(it)
+        }
         if (next != null) {
             return false
         }
         val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-        val blocker = order.ancestorsOf(target).firstOrNull { parent ->
+        val blocker = order.ancestorsOf(pivot).firstOrNull { parent ->
             parent.actionList.any { it.id == action } &&
                 !(forward && focus.hasExhaustedForwardScroll(parent, root, target))
         }
