@@ -25,6 +25,7 @@ import androidx.annotation.RequiresApi
 import com.neo.speaktouch.controller.ScreenCurtainController
 import com.neo.speaktouch.controller.ContextMenuController
 import com.neo.speaktouch.controller.BoundaryFeedbackController
+import com.neo.speaktouch.controller.NavigationGranularityController
 import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.RefocusController
 import com.neo.speaktouch.controller.ServiceController
@@ -42,12 +43,16 @@ class GestureInterceptor @Inject constructor(
     private val speechController: SpeechController,
     private val contextMenuController: ContextMenuController? = null,
     private val screenCurtainController: ScreenCurtainController? = null,
-    private val boundaryFeedback: BoundaryFeedbackController? = null
+    private val boundaryFeedback: BoundaryFeedbackController? = null,
+    private val granularity: NavigationGranularityController? = null
 ) {
 
     fun handle(gestureId: Int): Boolean {
+        granularity?.cancelPending()
         if (gestureId != AccessibilityService.GESTURE_SWIPE_LEFT &&
-            gestureId != AccessibilityService.GESTURE_SWIPE_RIGHT) boundaryFeedback?.cancel()
+            gestureId != AccessibilityService.GESTURE_SWIPE_RIGHT &&
+            gestureId != AccessibilityService.GESTURE_SWIPE_UP &&
+            gestureId != AccessibilityService.GESTURE_SWIPE_DOWN) boundaryFeedback?.cancel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             gestureId == AccessibilityService.GESTURE_2_FINGER_SINGLE_TAP) {
             speechController.togglePauseResume()
@@ -60,6 +65,13 @@ class GestureInterceptor @Inject constructor(
             return screenCurtainController != null
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            (gestureId == AccessibilityService.GESTURE_3_FINGER_SWIPE_DOWN ||
+                gestureId == AccessibilityService.GESTURE_3_FINGER_SWIPE_UP)) {
+            granularity?.cycle(forward = gestureId == AccessibilityService.GESTURE_3_FINGER_SWIPE_DOWN)
+            return granularity != null
+        }
+
         when (gestureId) {
             AccessibilityService.GESTURE_SWIPE_DOWN_AND_RIGHT -> {
                 contextMenuController?.open()
@@ -70,9 +82,9 @@ class GestureInterceptor @Inject constructor(
                 return true
             }
 
-            AccessibilityService.GESTURE_SWIPE_UP -> return sliderController.adjust(increase = true)
+            AccessibilityService.GESTURE_SWIPE_UP -> return vertical(forward = false)
 
-            AccessibilityService.GESTURE_SWIPE_DOWN -> return sliderController.adjust(increase = false)
+            AccessibilityService.GESTURE_SWIPE_DOWN -> return vertical(forward = true)
 
             AccessibilityService.GESTURE_SWIPE_LEFT -> {
                 if (boundaryFeedback != null) boundaryFeedback.navigate(forward = false)
@@ -103,6 +115,19 @@ class GestureInterceptor @Inject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && handleApi31(gestureId)) return true
 
         return false
+    }
+
+    private fun vertical(forward: Boolean): Boolean {
+        if (sliderController.adjust(increase = !forward)) {
+            boundaryFeedback?.cancel()
+            return true
+        }
+        val result = granularity?.move(forward) ?: run { boundaryFeedback?.cancel(); return false }
+        if (result == NavigationGranularityController.Result.DEFAULT) {
+            if (boundaryFeedback != null) boundaryFeedback.navigate(forward)
+            else if (forward) focusController.moveFocusToNext() else focusController.moveFocusToPrevious()
+        } else boundaryFeedback?.cancel()
+        return true
     }
 
     @RequiresApi(Build.VERSION_CODES.S)

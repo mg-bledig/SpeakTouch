@@ -94,4 +94,9 @@
     <string name="settings_audible_navigation_feedback">Audible navigation feedback</string>
     <string name="settings_haptic_navigation_feedback">Haptic navigation feedback</string>
     <string name="text_editing">Editing</string>
+    <string name="navigation_default">Default</string>
+    <string name="navigation_characters">Characters</string>
+    <string name="navigation_words">Words</string>
+    <string name="navigation_lines">Lines</string>
+    <string name="navigation_space">space</string>
 </resources>

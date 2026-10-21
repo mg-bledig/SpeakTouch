@@ -65,6 +65,7 @@ class SpeakTouchService : AccessibilityService () {
     override fun onServiceConnected() {
         super.onServiceConnected()
         if (::interceptors.isInitialized) interceptors.navigationSound.onServiceConnected()
+        if (::interceptors.isInitialized) interceptors.granularity.start()
         if (::interceptors.isInitialized) interceptors.speech.start()
         if (::interceptors.isInitialized) interceptors.checkState.start()
         if (::interceptors.isInitialized) interceptors.boundaryFeedback.start()
@@ -115,6 +116,7 @@ class SpeakTouchService : AccessibilityService () {
 
     override fun onUnbind(intent: Intent?): Boolean {
         if (::interceptors.isInitialized) interceptors.navigationSound.finish()
+        if (::interceptors.isInitialized) interceptors.granularity.finish()
         if (::interceptors.isInitialized) interceptors.speech.clearEditing()
         if (::interceptors.isInitialized) interceptors.checkState.finish()
         if (::interceptors.isInitialized) interceptors.boundaryFeedback.finish()

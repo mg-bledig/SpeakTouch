@@ -77,4 +77,9 @@
     <string name="menu_copy_unavailable">Não é possível copiar</string>
     <string name="menu_copy_failed">Falha ao copiar</string>
     <string name="text_editing">Editando</string>
+    <string name="navigation_default">Padrão</string>
+    <string name="navigation_characters">Caracteres</string>
+    <string name="navigation_words">Palavras</string>
+    <string name="navigation_lines">Linhas</string>
+    <string name="navigation_space">espa�o</string>
 </resources>

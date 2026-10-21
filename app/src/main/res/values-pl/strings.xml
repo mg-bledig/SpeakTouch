@@ -77,4 +77,9 @@
     <string name="menu_copy_unavailable">Kopiowanie niedostępne</string>
     <string name="menu_copy_failed">Kopiowanie nie powiodło się</string>
     <string name="text_editing">Edycja</string>
+    <string name="navigation_default">Domyślna</string>
+    <string name="navigation_characters">Znaki</string>
+    <string name="navigation_words">Słowa</string>
+    <string name="navigation_lines">Wiersze</string>
+    <string name="navigation_space">spacja</string>
 </resources>
