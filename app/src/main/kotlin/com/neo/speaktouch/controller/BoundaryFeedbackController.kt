@@ -192,6 +192,12 @@ class BoundaryFeedbackController @Inject constructor(
         if (preferences.hapticNavigationFeedback && vibration.hasVibrator()) vibration.vibrateBoundary()
     }
 
+    /** A selector-search cue only: no traversal, wrap arming or additional haptics. */
+    fun playBoundarySound() {
+        cancel()
+        if (!finished && preferences.audibleNavigationFeedback) player.play(PCM, SAMPLE_RATE)
+    }
+
     fun cancel() {
         focus.clearForwardScrollProofs()
         armedEdge = null

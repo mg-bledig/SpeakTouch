@@ -46,10 +46,11 @@ class NavigationGranularityController @Inject constructor(
         DEFAULT(0, R.string.navigation_default),
         CHARACTERS(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER, R.string.navigation_characters),
         WORDS(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD, R.string.navigation_words),
-        LINES(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE, R.string.navigation_lines)
+        LINES(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE, R.string.navigation_lines),
+        HEADINGS(0, R.string.navigation_headings)
     }
     // A provider rejection is not proof that the entire window is exhausted.
-    enum class Result { DEFAULT, ACCEPTED, NO_MOVEMENT, UNAVAILABLE }
+    enum class Result { DEFAULT, ACCEPTED, NO_MOVEMENT, UNAVAILABLE, HEADING_BOUNDARY }
     private data class Scope(val root: AccessibilityNodeInfo, val anchor: AccessibilityNodeInfo, val window: Int)
     private class Request(val scope: Scope, val target: AccessibilityNodeInfo, val mode: Mode,
         val action: Int, val time: Long, val speechGeneration: Long) {
@@ -65,6 +66,7 @@ class NavigationGranularityController @Inject constructor(
     private var cursorScope: Scope? = null
     private var cursorTarget: AccessibilityNodeInfo? = null
     private var finished = false
+    private val webNavigation = WebNavigationController(service, callbacks)
 
     fun start() { finish(); finished = false; selectedMode = Mode.DEFAULT }
 
@@ -126,7 +128,15 @@ class NavigationGranularityController @Inject constructor(
         if (finished) listOf(Mode.DEFAULT) else {
             val scope = scope()
             val targets = scope?.let(::targets).orEmpty()
-            Mode.entries.filter { it == Mode.DEFAULT || targets.any { node -> supports(node, it) } }
+            Mode.entries.filter { mode ->
+                when (mode) {
+                    Mode.DEFAULT -> true
+                    Mode.HEADINGS -> scope != null &&
+                        Type.get(AccessibilityNodeInfoCompat.wrap(scope.anchor)) != Type.Slider &&
+                        webNavigation.valid(scope.anchor, scope.root)
+                    else -> targets.any { node -> supports(node, mode) }
+                }
+            }
         }
     } catch (_: RuntimeException) { listOf(Mode.DEFAULT) }
 
@@ -163,7 +173,7 @@ class NavigationGranularityController @Inject constructor(
     }
 
     private fun ownScrolling(scope: Scope) {
-        val web = WebNavigationController(service, callbacks).boundary(scope.anchor)
+        val web = webNavigation.boundary(scope.anchor)
         var owner = web ?: scope.anchor
         if (web == null) {
             val seen = mutableSetOf<AccessibilityNodeInfo>()
@@ -182,6 +192,28 @@ class NavigationGranularityController @Inject constructor(
         if (selectedMode == Mode.DEFAULT) return Result.DEFAULT
         return try {
             val scope = scope() ?: return Result.UNAVAILABLE
+            if (selectedMode == Mode.HEADINGS) {
+                if (Type.get(AccessibilityNodeInfoCompat.wrap(scope.anchor)) == Type.Slider ||
+                    webNavigation.container(scope.anchor) == null) return Result.DEFAULT
+                // HTML focus events supply speech. Do not create a text-range request or
+                // reinterpret a rejected selector as exhaustion of ordinary navigation.
+                val speechGeneration = speech.generation
+                return when (webNavigation.navigateHeading(scope.anchor, forward)) {
+                    WebNavigationController.Result.ACCEPTED -> Result.ACCEPTED
+                    WebNavigationController.Result.EXHAUSTED -> {
+                        if (finished || selectedMode != Mode.HEADINGS || speech.generation != speechGeneration)
+                            return Result.UNAVAILABLE
+                        // The provider returned no result with focus/window/actions still valid.
+                        // Android cannot distinguish no match from a stable provider rejection;
+                        // report this search only, never arm whole-window edge/wrap state.
+                        speech.speak(Text(if (forward) R.string.navigation_no_next_heading
+                            else R.string.navigation_no_previous_heading))
+                        Result.HEADING_BOUNDARY
+                    }
+                    WebNavigationController.Result.UNAVAILABLE -> Result.UNAVAILABLE
+                    else -> Result.NO_MOVEMENT
+                }
+            }
             val candidates = targets(scope).filter { supports(it, selectedMode) }
             if (candidates.isEmpty()) {
                 // Losing capabilities in an active text session is not permission to wrap

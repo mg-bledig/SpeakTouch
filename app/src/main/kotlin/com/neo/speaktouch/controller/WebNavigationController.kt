@@ -74,7 +74,15 @@ class WebNavigationController(
 
     fun isContainer(node: AccessibilityNodeInfo) = container(node) == node
 
-    fun navigate(node: AccessibilityNodeInfo, forward: Boolean, entering: Boolean = false): Result {
+    fun navigate(node: AccessibilityNodeInfo, forward: Boolean, entering: Boolean = false): Result =
+        navigateHtml(node, forward, entering, selector = "")
+
+    /** Heading search stays within the provider; rejection is never a sequential edge proof. */
+    fun navigateHeading(node: AccessibilityNodeInfo, forward: Boolean): Result =
+        navigateHtml(node, forward, entering = false, selector = "HEADING")
+
+    private fun navigateHtml(node: AccessibilityNodeInfo, forward: Boolean, entering: Boolean,
+        selector: String): Result {
         edge = null
         if (!supports(node)) return Result.UNSUPPORTED
         val root = service.getRoot() ?: return Result.UNAVAILABLE
@@ -84,12 +92,13 @@ class WebNavigationController(
         fun current() = valid(node, root) && root.windowId == window &&
             service.getRoot()?.windowId == window &&
             (entering || originalFocus == node && node.isAccessibilityFocused) &&
+            (selector.isEmpty() || node.isVisibleToUser) &&
             service.getFocused() == originalFocus
         return try {
             if (!current()) return Result.UNAVAILABLE
             // Previous from the native container exits the web document. Previous *into*
             // that container asks the provider for its last reading destination instead.
-            if (!entering && !forward && node == container) {
+            if (selector.isEmpty() && !entering && !forward && node == container) {
                 edge = Edge(root, window, node, container, forward)
                 return Result.EXHAUSTED
             }
@@ -99,12 +108,12 @@ class WebNavigationController(
             // Scroll events may come from the native host or its virtual document root.
             callbacks.markProviderNavigation(root, findWebView(node, requireActions = false) ?: container)
             val accepted = node.performAction(action, Bundle().apply {
-                putString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING, "")
+                putString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING, selector)
             })
             if (accepted) Result.ACCEPTED // Focus may arrive later; never fall through.
             else if (!current() || node.actionList.none { it.id == action }) Result.UNAVAILABLE
             else {
-                edge = Edge(root, window, node, container, forward)
+                if (selector.isEmpty()) edge = Edge(root, window, node, container, forward)
                 Result.EXHAUSTED
             }
         } catch (_: RuntimeException) { Result.UNAVAILABLE }

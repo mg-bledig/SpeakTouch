@@ -99,4 +99,7 @@
     <string name="navigation_words">Words</string>
     <string name="navigation_lines">Lines</string>
     <string name="navigation_space">space</string>
+    <string name="navigation_headings">Headings</string>
+    <string name="navigation_no_next_heading">No next heading</string>
+    <string name="navigation_no_previous_heading">No previous heading</string>
 </resources>

@@ -635,4 +635,80 @@ class BoundaryFeedbackTest {
         setFocus(first); boundary.navigate(true); assertEquals(1, tracks.size)
         setFocus(last); boundary.navigate(false); assertEquals(2, tracks.size)
     }
+    private fun headingGestureTest(accepted: Boolean = false,
+        block: (GestureInterceptor, TextToSpeech, NavigationGranularityController) -> Unit) {
+        val web = node("Document").apply { className = "android.webkit.WebView" }
+        for (target in listOf(web, last)) {
+            target.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_HTML_ELEMENT)
+            target.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PREVIOUS_HTML_ELEMENT)
+        }
+        nodeShadow(root).addChild(web); nodeShadow(web).addChild(last)
+        nodeShadow(last).setOnPerformActionListener { action, args ->
+            assertTrue(action == AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT || action == AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT)
+            assertEquals("HEADING", args!!.getString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING)); accepted
+        }
+        val wrapper = ServiceController(service)
+        val tts = TextToSpeech(context, null)
+        val speech = SpeechController(tts, context, Reader(context))
+        val granularity = NavigationGranularityController(wrapper, speech, callbacks, context)
+        granularity.start(); granularity.cycle(true)
+        assertEquals(NavigationGranularityController.Mode.HEADINGS, granularity.selectedMode)
+        try {
+            block(GestureInterceptor(focus, wrapper, SliderController(wrapper, speech),
+                RefocusController(wrapper, speech), speech, boundaryFeedback = boundary, granularity = granularity), tts, granularity)
+        } finally { granularity.finish(); speech.shutdown() }
+    }
+    @Test fun `heading boundaries speak and play exactly one existing tone in both directions`() = headingGestureTest { gestures, tts, granularity ->
+        val count = shadowOf(tts).spokenTextList.size
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN)
+        assertEquals(1, tracks.size); assertArrayEquals(BoundaryFeedbackController.PCM, data.single())
+        assertEquals(context.getString(com.neo.speaktouch.R.string.navigation_no_next_heading), shadowOf(tts).spokenTextList.last())
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_UP)
+        assertEquals(2, tracks.size); assertEquals(count + 2, shadowOf(tts).spokenTextList.size)
+        assertEquals(context.getString(com.neo.speaktouch.R.string.navigation_no_previous_heading), shadowOf(tts).spokenTextList.last())
+        assertEquals(last, nodeShadow(root).focused)
+        assertEquals(NavigationGranularityController.Mode.HEADINGS, granularity.selectedMode)
+        assertFalse(nodeShadow(last).performedActions.contains(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2)); assertEquals(2, tracks.size)
+    }
+    @Test fun `accepted heading with delayed focus never emits a premature boundary`() = headingGestureTest(accepted = true) { gestures, tts, _ ->
+        val count = shadowOf(tts).spokenTextList.size
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertTrue(tracks.isEmpty()); assertEquals(count, shadowOf(tts).spokenTextList.size)
+        setFocus(first); assertTrue(tracks.isEmpty())
+    }
+    @Test fun `stale heading target produces neither speech nor a boundary tone`() = headingGestureTest { gestures, tts, _ ->
+        val count = shadowOf(tts).spokenTextList.size
+        nodeShadow(last).setRefreshReturnValue(false); gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN)
+        assertTrue(tracks.isEmpty()); assertEquals(count, shadowOf(tts).spokenTextList.size)
+    }
+    @Test fun `missing heading action produces neither speech nor a boundary tone`() = headingGestureTest { gestures, tts, _ ->
+        val count = shadowOf(tts).spokenTextList.size
+        last.removeAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_HTML_ELEMENT)
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN)
+        assertTrue(tracks.isEmpty()); assertEquals(count, shadowOf(tts).spokenTextList.size)
+    }
+    @Test fun `heading boundary speech remains audible when navigation sounds are disabled`() = headingGestureTest { gestures, tts, _ ->
+        prefs(false, true); gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN)
+        assertTrue(tracks.isEmpty()); assertFalse(shadowOf(vibrator).isVibrating)
+        assertEquals(context.getString(com.neo.speaktouch.R.string.navigation_no_next_heading), shadowOf(tts).spokenTextList.last())
+    }
+    @Test fun `repeated heading boundary attempts replace sound without wrapping or backlog`() = headingGestureTest { gestures, tts, _ ->
+        val count = shadowOf(tts).spokenTextList.size
+        repeat(3) { gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN) }
+        assertEquals(3, tracks.size); assertEquals(count + 3, shadowOf(tts).spokenTextList.size)
+        assertEquals(1, audio(tracks.first()).releases); assertEquals(last, nodeShadow(root).focused)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2)); assertEquals(3, tracks.size)
+    }
+    @Test fun `standalone boundary sound cancels old wrap arming without adding haptics`() {
+        boundary.navigate(true); assertEquals(1, tracks.size)
+        boundary.playBoundarySound(); assertEquals(2, tracks.size)
+        boundary.navigate(true); assertEquals(3, tracks.size); assertEquals(last, nodeShadow(root).focused)
+        assertFalse(shadowOf(vibrator).isVibrating)
+    }
+    @Test fun `standalone boundary sound is unavailable after teardown`() {
+        boundary.finish(); boundary.playBoundarySound(); assertTrue(tracks.isEmpty())
+    }
+
 }

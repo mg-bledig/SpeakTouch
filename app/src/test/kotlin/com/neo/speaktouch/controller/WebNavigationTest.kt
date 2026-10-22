@@ -399,4 +399,66 @@ class WebNavigationTest {
         boundary.finish()
     }
 
+    @Test fun `heading selector dispatches on focused pivot and never on host`() {
+        for (forward in listOf(true, false)) {
+            assertEquals(WebNavigationController.Result.ACCEPTED, focus.webNavigation.navigateHeading(button, forward))
+            assertEquals(if (forward) AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT else AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT, html.last().first)
+            assertEquals("HEADING", html.last().second!!.getString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING))
+        }
+        assertEquals(button, wrapper.getFocused()); assertTrue(focusActions.isEmpty())
+    }
+    @Test fun `previous heading from document invokes provider rather than native exit shortcut`() {
+        setFocus(web); assertEquals(WebNavigationController.Result.ACCEPTED, focus.webNavigation.navigateHeading(web, false))
+        assertEquals(AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT, html.single().first)
+        assertTrue(focusActions.isEmpty())
+    }
+    @Test fun `rejected heading never proves sequential exhaustion or changes focus`() {
+        accepted = false
+        for (forward in listOf(true, false)) {
+            assertEquals(WebNavigationController.Result.EXHAUSTED, focus.webNavigation.navigateHeading(button, forward))
+            assertFalse(focus.webNavigation.exhausted(root, button, forward))
+        }
+        assertEquals(button, wrapper.getFocused()); assertTrue(focusActions.isEmpty())
+    }
+    @Test fun `heading attempt clears any earlier sequential edge proof`() {
+        accepted = false; focus.webNavigation.navigate(button, true)
+        assertTrue(focus.webNavigation.exhausted(root, button, true))
+        focus.webNavigation.navigateHeading(button, true)
+        assertFalse(focus.webNavigation.exhausted(root, button, true))
+    }
+    @Test fun `heading request validates source and active window before dispatch`() {
+        NavigationNodeShadow.refreshBehaviors[button] = { false }
+        assertEquals(WebNavigationController.Result.UNAVAILABLE, focus.webNavigation.navigateHeading(button, true))
+        assertTrue(html.isEmpty()); assertTrue(focusActions.isEmpty())
+    }
+    @Test fun `window change during rejected heading is unavailable rather than exhaustion`() {
+        accepted = false; duringAction = { service.root = node("New window") }
+        assertEquals(WebNavigationController.Result.UNAVAILABLE, focus.webNavigation.navigateHeading(button, true))
+        assertFalse(focus.webNavigation.exhausted(root, button, true)); assertTrue(focusActions.isEmpty())
+    }
+    @Test fun `heading dispatch requires current focus and visible pivot`() {
+        button.isVisibleToUser = false
+        assertEquals(WebNavigationController.Result.UNAVAILABLE, focus.webNavigation.navigateHeading(button, true))
+        button.isVisibleToUser = true; setFocus(after)
+        assertEquals(WebNavigationController.Result.UNAVAILABLE, focus.webNavigation.navigateHeading(button, true))
+        assertTrue(html.isEmpty())
+    }
+    @Test fun `provider owned heading scroll cannot trigger manual focus recovery`() {
+        val interpreter = ManualScrollInterpreter(wrapper, callbacks)
+        val recovery = ManualScrollFocusController(wrapper, interpreter)
+        interpreter.start(); recovery.start()
+        fun send(e: AccessibilityEvent) { interpreter.handle(e); recovery.handle(e); callbacks.handle(e) }
+        try {
+            send(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_START)); send(event(AccessibilityEvent.TYPE_TOUCH_INTERACTION_END))
+            assertEquals(WebNavigationController.Result.ACCEPTED, focus.webNavigation.navigateHeading(button, true))
+            assertTrue(callbacks.hasPendingScroll(web)); assertTrue(callbacks.hasPendingScroll(button))
+            ns(root).focused = null; button.isAccessibilityFocused = false
+            val scroll = event(AccessibilityEvent.TYPE_VIEW_SCROLLED).apply {
+                eventTime = 100; scrollX = 0; scrollY = 100; maxScrollY = 1000; isScrollable = true
+            }
+            send(scroll); shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+            assertNull(interpreter.confirmedScroll(scroll)); assertTrue(focusActions.isEmpty())
+        } finally { recovery.finish(); interpreter.finish() }
+    }
+
 }

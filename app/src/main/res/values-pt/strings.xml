@@ -81,5 +81,8 @@
     <string name="navigation_characters">Caracteres</string>
     <string name="navigation_words">Palavras</string>
     <string name="navigation_lines">Linhas</string>
-    <string name="navigation_space">espa�o</string>
+    <string name="navigation_space">espaço</string>
+    <string name="navigation_headings">Cabeçalhos</string>
+    <string name="navigation_no_next_heading">Não há próximo cabeçalho</string>
+    <string name="navigation_no_previous_heading">Não há cabeçalho anterior</string>
 </resources>

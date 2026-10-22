@@ -82,4 +82,7 @@
     <string name="navigation_words">Słowa</string>
     <string name="navigation_lines">Wiersze</string>
     <string name="navigation_space">spacja</string>
+    <string name="navigation_headings">Nagłówki</string>
+    <string name="navigation_no_next_heading">Brak następnego nagłówka</string>
+    <string name="navigation_no_previous_heading">Brak poprzedniego nagłówka</string>
 </resources>

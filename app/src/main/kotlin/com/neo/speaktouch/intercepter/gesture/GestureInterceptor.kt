@@ -126,6 +126,8 @@ class GestureInterceptor @Inject constructor(
         if (result == NavigationGranularityController.Result.DEFAULT) {
             if (boundaryFeedback != null) boundaryFeedback.navigate(forward)
             else if (forward) focusController.moveFocusToNext() else focusController.moveFocusToPrevious()
+        } else if (result == NavigationGranularityController.Result.HEADING_BOUNDARY) {
+            boundaryFeedback?.playBoundarySound()
         } else boundaryFeedback?.cancel()
         return true
     }

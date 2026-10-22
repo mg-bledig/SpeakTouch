@@ -90,7 +90,7 @@ class NavigationGranularityTest {
             movementGranularity = mode.mask; fromIndex = from; toIndex = to; text.add(value)
         }
     private fun selected(mode: Mode = Mode.CHARACTERS) {
-        repeat(4) { if (controller.selectedMode != mode) controller.cycle(true) }
+        repeat(Mode.entries.size) { if (controller.selectedMode != mode) controller.cycle(true) }
         assertEquals(mode, controller.selectedMode); announcementCount = shadowOf(tts).spokenTextList.size
     }
     private fun spoken() = shadowOf(tts).spokenTextList.drop(announcementCount)
@@ -301,7 +301,7 @@ class NavigationGranularityTest {
     @Test fun `web document is not scanned for native descendant capabilities`() {
         val web = node("android.webkit.WebView").apply { addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_HTML_ELEMENT) }
         target.isFocusable = false; ns(root).addChild(web); ns(web).addChild(target); focus(web)
-        assertEquals(listOf(Mode.DEFAULT), controller.availableModes())
+        assertEquals(listOf(Mode.DEFAULT, Mode.HEADINGS), controller.availableModes())
     }
     @Test fun `web text uses movement actions and owns provider scrolling`() {
         val web = node("android.webkit.WebView").apply { addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_HTML_ELEMENT) }
@@ -657,7 +657,206 @@ class NavigationGranularityTest {
         verifySpaceCharacters(emptyEvent = true); assertEquals(listOf("spacja", "spacja"), spoken())
     }
     @Test @Config(qualifiers = "pt") fun `space is localized in Portuguese`() {
-        verifySpaceCharacters(emptyEvent = true); assertEquals(listOf("espaço", "espaço"), spoken())
+        verifySpaceCharacters(emptyEvent = true); assertEquals(listOf("espaÃ§o", "espaÃ§o"), spoken())
+    }
+
+    private fun headingMode() {
+        webTarget(); advertise(mask = 0, next = false, previous = false); selected(Mode.HEADINGS)
+    }
+    @Test fun `Headings is contextual to HTML actions and does not need a text movement mask`() {
+        assertFalse(controller.availableModes().contains(Mode.HEADINGS))
+        webTarget(); advertise(mask = 0, next = false, previous = false)
+        assertEquals(listOf(Mode.DEFAULT, Mode.HEADINGS), controller.availableModes())
+        selected(Mode.HEADINGS); assertEquals(Mode.HEADINGS, controller.effectiveMode())
+    }
+    @Test fun `web mode cycling includes Headings and wraps in both directions`() {
+        webTarget()
+        val modes = listOf(Mode.CHARACTERS, Mode.WORDS, Mode.LINES, Mode.HEADINGS, Mode.DEFAULT)
+        modes.forEach { controller.cycle(true); assertEquals(it, controller.selectedMode) }
+        controller.cycle(false); assertEquals(Mode.HEADINGS, controller.selectedMode)
+        controller.cycle(false); assertEquals(Mode.LINES, controller.selectedMode)
+    }
+    @Test fun `heading movement uses focused provider pivot and exact selector in both directions`() {
+        headingMode()
+        for (forward in listOf(true, false)) {
+            assertEquals(Result.ACCEPTED, perform(forward))
+            val (action, args) = bundles.last()
+            assertEquals(if (forward) AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT else AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT, action)
+            assertEquals(setOf(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING), args!!.keySet())
+            assertEquals("HEADING", args.getString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING))
+        }
+        assertEquals(2, bundles.size); assertEquals(target, ns(root).accessibility)
+        assertTrue(ns(target.parent).performedActions.isEmpty()); assertTrue(spoken().isEmpty())
+    }
+    @Test fun `heading acceptance never creates a text traversal request`() {
+        headingMode(); perform(); handle(traversal(mode = Mode.CHARACTERS))
+        assertTrue(spoken().isEmpty()); assertEquals(target, ns(root).accessibility)
+    }
+    @Test fun `changing from text to Headings discards the old text response`() {
+        webTarget(); selected(); perform(); val old = traversal()
+        selected(Mode.HEADINGS); perform(); handle(old); assertTrue(spoken().isEmpty())
+    }
+    @Test fun `delayed heading focus supplies one normal Reader announcement and provider level`() {
+        headingMode(); perform(); assertTrue(spoken().isEmpty())
+        val heading = node("android.view.View").apply {
+            text = "Topic"; addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_HTML_ELEMENT)
+            addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PREVIOUS_HTML_ELEMENT)
+        }
+        AccessibilityNodeInfoCompat.wrap(heading).apply { isHeading = true; roleDescription = "heading level 2" }
+        ns(target.parent).addChild(heading); focus(heading)
+        val gained = event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, heading)
+        SpeechInterceptor(speech).handle(gained); handle(gained)
+        assertEquals(listOf("Topic, heading level 2"), spoken())
+        assertEquals(Mode.HEADINGS, controller.selectedMode); assertEquals(Mode.HEADINGS, controller.effectiveMode())
+        assertTrue(ns(heading).performedActions.isEmpty())
+    }
+    @Test fun `synchronous provider heading focus is not spoken twice`() {
+        headingMode()
+        val heading = node().apply { text = "Second heading" }
+        AccessibilityNodeInfoCompat.wrap(heading).roleDescription = "heading level 3"
+        ns(target.parent).addChild(heading)
+        ns(target).setOnPerformActionListener { _, _ ->
+            focus(heading); val gained = event(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, heading)
+            SpeechInterceptor(speech).handle(gained); handle(gained); true
+        }
+        assertEquals(Result.ACCEPTED, perform()); assertEquals(listOf("Second heading, heading level 3"), spoken())
+    }
+    @Test fun `failed heading search never enters native traversal or wraps`() {
+        headingMode(); val next = sequentialTarget()
+        ns(target).setOnPerformActionListener { action, _ -> bundles.add(action to null); false }
+        withBoundary { input ->
+            repeat(3) { input.handle(AccessibilityService.GESTURE_SWIPE_DOWN); assertEquals(target, ns(root).accessibility) }
+        }
+        assertTrue(ns(next).performedActions.isEmpty())
+        assertEquals(List(3) { context.getString(R.string.navigation_no_next_heading) }, spoken())
+        assertEquals(List(3) { AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT }, bundles.map { it.first })
+    }
+    @Test fun `missing heading direction stays a nonmoving heading request`() {
+        headingMode(); target.removeAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PREVIOUS_HTML_ELEMENT)
+        assertEquals(Result.NO_MOVEMENT, perform(false)); assertTrue(bundles.isEmpty())
+        assertEquals(target, ns(root).accessibility)
+    }
+    @Test fun `native context uses effective Default but retains Headings for return to web`() {
+        headingMode(); val native = node("android.widget.Button").apply { text = "Native"; isFocusable = true }
+        ns(root).addChild(native); focus(native)
+        assertEquals(Mode.DEFAULT, controller.effectiveMode()); assertEquals(Result.DEFAULT, perform())
+        assertEquals(Mode.HEADINGS, controller.selectedMode)
+        focus(target); assertEquals(Mode.HEADINGS, controller.effectiveMode()); assertEquals(Result.ACCEPTED, perform())
+    }
+    @Test fun `native accessibility heading alone does not expose Headings mode`() {
+        AccessibilityNodeInfoCompat.wrap(target).isHeading = true
+        assertFalse(controller.availableModes().contains(Mode.HEADINGS))
+    }
+    @Test fun `HTML actions without a WebView ancestry do not expose Headings`() {
+        target.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_HTML_ELEMENT)
+        assertFalse(controller.availableModes().contains(Mode.HEADINGS))
+    }
+    @Test fun `slider gestures keep priority and do not discard selected Headings`() {
+        headingMode(); val slider = node("android.widget.SeekBar").apply {
+            isFocusable = true; addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+            addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD)
+        }
+        ns(root).addChild(slider); focus(slider); ns(slider).setOnPerformActionListener { _, _ -> true }
+        gestures.handle(AccessibilityService.GESTURE_SWIPE_UP); gestures.handle(AccessibilityService.GESTURE_SWIPE_DOWN)
+        assertEquals(listOf(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD), ns(slider).performedActions)
+        assertEquals(Mode.HEADINGS, controller.selectedMode); assertEquals(Mode.DEFAULT, controller.effectiveMode())
+        focus(target); assertEquals(Mode.HEADINGS, controller.effectiveMode())
+    }
+    @Test fun `web slider retains the existing slider only mode availability`() {
+        headingMode(); target.className = "android.widget.SeekBar"
+        assertEquals(listOf(Mode.DEFAULT), controller.availableModes()); assertEquals(Mode.HEADINGS, controller.selectedMode)
+    }
+    @Test fun `left right remain sequential HTML navigation with Headings selected`() {
+        headingMode(); gestures.handle(AccessibilityService.GESTURE_SWIPE_RIGHT); gestures.handle(AccessibilityService.GESTURE_SWIPE_LEFT)
+        assertEquals(listOf(AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT, AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT), bundles.map { it.first })
+        assertTrue(bundles.all { it.second!!.getString(AccessibilityNodeInfo.ACTION_ARGUMENT_HTML_ELEMENT_STRING) == "" })
+        assertEquals(Mode.HEADINGS, controller.selectedMode)
+    }
+    @Test fun `native three finger gestures cycle to Headings under existing API guard`() {
+        webTarget()
+        val supported = android.os.Build.VERSION.SDK_INT >= 30
+        repeat(4) { assertEquals(supported, gestures.handle(AccessibilityService.GESTURE_3_FINGER_SWIPE_DOWN)) }
+        assertEquals(if (supported) Mode.HEADINGS else Mode.DEFAULT, controller.selectedMode)
+        assertEquals(supported, gestures.handle(AccessibilityService.GESTURE_3_FINGER_SWIPE_UP))
+        assertEquals(if (supported) Mode.LINES else Mode.DEFAULT, controller.selectedMode)
+    }
+    @Test fun `stale web target prevents heading dispatch`() {
+        headingMode(); ns(target).setRefreshReturnValue(false)
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(bundles.isEmpty())
+    }
+    @Test fun `invalid active window prevents heading dispatch`() {
+        headingMode(); service.root = node()
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(bundles.isEmpty())
+    }
+    @Test fun `heading navigation does not change an editable caret or selection`() {
+        headingMode(); target.isEditable = true; target.isFocused = true; ns(root).input = target; target.setTextSelection(1, 4)
+        perform(); assertEquals(1, target.textSelectionStart); assertEquals(4, target.textSelectionEnd)
+        assertEquals(target, ns(root).input); assertTrue(spoken().isEmpty())
+    }
+    @Test @Config(qualifiers = "en") fun `heading mode has an English name`() {
+        headingMode(); assertEquals("Headings", shadowOf(tts).spokenTextList.last())
+    }
+    @Test @Config(qualifiers = "pl") fun `heading mode has a Polish name`() {
+        headingMode(); assertEquals("Nag\u0142\u00f3wki", shadowOf(tts).spokenTextList.last())
+    }
+    @Test @Config(qualifiers = "pt") fun `heading mode has a Portuguese name`() {
+        headingMode(); assertEquals("Cabe\u00e7alhos", shadowOf(tts).spokenTextList.last())
+    }
+
+    @Test fun `validated no result speaks directional heading feedback once without changing focus`() {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ -> false }
+        for (forward in listOf(true, false)) {
+            val before = spoken().size
+            assertEquals(Result.HEADING_BOUNDARY, perform(forward))
+            assertEquals(before + 1, spoken().size)
+            assertEquals(context.getString(if (forward) R.string.navigation_no_next_heading else R.string.navigation_no_previous_heading), spoken().last())
+            handle(traversal(mode = Mode.CHARACTERS)); assertEquals(before + 1, spoken().size)
+            assertEquals(target, ns(root).accessibility); assertEquals(Mode.HEADINGS, controller.selectedMode)
+        }
+    }
+    @Test fun `heading provider exception is silent rather than a boundary`() {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ -> throw IllegalStateException("Unavailable") }
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(spoken().isEmpty())
+    }
+    @Test fun `heading action losing its capability during rejection is not a boundary`() {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ ->
+            target.removeAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_HTML_ELEMENT); false
+        }
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(spoken().isEmpty())
+    }
+    @Test fun `heading rejection after focus change is not a boundary`() {
+        headingMode(); val other = node().apply { text = "Other" }; ns(root).addChild(other)
+        ns(target).setOnPerformActionListener { _, _ -> focus(other); false }
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(spoken().isEmpty())
+    }
+    @Test fun `heading rejection after window change is not a boundary`() {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ -> service.root = node(); false }
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(spoken().isEmpty())
+    }
+    @Test fun `heading rejection becoming stale after dispatch is not a boundary`() {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ -> ns(target).setRefreshReturnValue(false); false }
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(spoken().isEmpty())
+    }
+    @Test fun `unrelated feedback during failed heading search is not overwritten`() {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ -> speech.speak(Text("Other feedback")); false }
+        assertEquals(Result.UNAVAILABLE, perform()); assertEquals(listOf("Other feedback"), spoken())
+    }
+    @Test fun `service shutdown during failed heading search suppresses boundary feedback`() {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ -> controller.finish(); false }
+        assertEquals(Result.UNAVAILABLE, perform()); assertTrue(spoken().isEmpty())
+    }
+    private fun verifyLocalizedHeadingBoundary(next: String, previous: String) {
+        headingMode(); ns(target).setOnPerformActionListener { _, _ -> false }
+        perform(); perform(false); assertEquals(listOf(next, previous), spoken())
+    }
+    @Test @Config(qualifiers = "en") fun `heading boundary names are localized in English`() {
+        verifyLocalizedHeadingBoundary("No next heading", "No previous heading")
+    }
+    @Test @Config(qualifiers = "pl") fun `heading boundary names are localized in Polish`() {
+        verifyLocalizedHeadingBoundary("Brak nast\u0119pnego nag\u0142\u00f3wka", "Brak poprzedniego nag\u0142\u00f3wka")
+    }
+    @Test @Config(qualifiers = "pt") fun `heading boundary names are localized in Portuguese`() {
+        verifyLocalizedHeadingBoundary("N\u00e3o h\u00e1 pr\u00f3ximo cabe\u00e7alho", "N\u00e3o h\u00e1 cabe\u00e7alho anterior")
     }
 
 }
