@@ -36,13 +36,16 @@ import javax.inject.Inject
 class SpeechInterceptor @Inject constructor(
     private val speech: SpeechController,
     private val screenChanges: ScreenChangeController? = null,
-    private val editing: EditingFeedbackController? = null
+    private val editing: EditingFeedbackController? = null,
+    private val relocation: com.neo.speaktouch.controller.RelocationFeedbackController? = null
 ) : EventInterceptor {
-    fun start() { editing?.start() }
+    private var initialWindowFocus: android.view.accessibility.AccessibilityNodeInfo? = null
+    fun start() { initialWindowFocus = null; editing?.start() }
     fun clearEditing() { editing?.finish() }
 
     override fun handle(event: AccessibilityEvent) {
         if (event.isTouchInteractionStart) {
+            initialWindowFocus = null
             speech.onTouchStart()
             editing?.onEvent(event)
             return
@@ -53,12 +56,17 @@ class SpeechInterceptor @Inject constructor(
             return
         }
         if (event.eventType == AccessibilityEvent.TYPE_GESTURE_DETECTION_START) {
+            initialWindowFocus = null
             speech.onGestureDetectionStart()
             return
         }
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                event.windowId >= 0 && event.windowId != initialWindowFocus?.windowId) initialWindowFocus = null
         val editingSpoken = editing?.onEvent(event) == true
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED ||
+            event.eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
             (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED &&
@@ -67,13 +75,23 @@ class SpeechInterceptor @Inject constructor(
             speech.cancelResume()
 
         if (event.isAccessibilityFocused) {
-            speech.cancelResume()
-            val node = AccessibilityNodeInfoCompat.wrap(event.source ?: return)
+            val source = event.source ?: return
+            if (initialWindowFocus == source && initialWindowFocus?.windowId == source.windowId) { return }
+            initialWindowFocus = null
+            val node = AccessibilityNodeInfoCompat.wrap(relocation?.focusedDestination(source) ?: source)
             if (!editingSpoken && screenChanges?.onFocused(node) != true) speech.speak(node)
         }
     }
 
+    /** Some windows expose an already-focused option without sending another focus event. */
+    fun announceInitialWindowFocus(node: AccessibilityNodeInfoCompat) {
+        initialWindowFocus = node.unwrap()
+        speech.cancelResume()
+        if (screenChanges?.onFocused(node) != true) speech.speak(node)
+    }
+
     override fun finish() {
+        initialWindowFocus = null
 
         Timber.i("finish")
 

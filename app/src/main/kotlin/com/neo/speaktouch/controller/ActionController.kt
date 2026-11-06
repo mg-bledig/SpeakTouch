@@ -47,12 +47,16 @@ class ActionSnapshot internal constructor(
     }
     internal fun matches(node: AccessibilityNodeInfo): Boolean =
         target == node && windowId == node.windowId
+
+    internal fun sameTarget(other: ActionSnapshot): Boolean =
+        windowId == other.windowId && target == other.target
 }
 
 @ServiceScoped
 class ActionController @Inject constructor(
     private val serviceController: ServiceController,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val relocation: RelocationFeedbackController? = null
 ) {
     fun discover(): ActionSnapshot? {
         val node = serviceController.getFocused() ?: return null
@@ -72,7 +76,10 @@ class ActionController @Inject constructor(
             !node.isEnabled || !isCurrent(node)) return false
         val action = node.actionList.firstOrNull { it.id == actionId } ?: return false
         if (describe(action).policy != ActionPolicy.SUPPORTED_NO_ARGUMENT) return false
-        return node.performAction(actionId)
+        val recovery = relocation?.prepare(node, actionId)
+        val accepted = node.performAction(actionId)
+        relocation?.accepted(recovery, accepted)
+        return accepted
     }
 
     private fun isCurrent(node: AccessibilityNodeInfo): Boolean {

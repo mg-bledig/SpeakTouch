@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BackTalk recognition defaults, Apache-2.0; see THIRD_PARTY_NOTICES. -->
+<resources>
+ <item name="config_gesture_confirm_distance_cm" format="float" type="dimen">1.0</item>
+ <integer name="config_max_time_to_start_swipe_ms_per_cm">150</integer>
+ <integer name="config_max_time_to_continue_swipe_ms_per_cm">350</integer>
+ <integer name="config_tap_timeout_delta">0</integer>
+ <integer name="config_slop_default_multiplier">1</integer>
+</resources>

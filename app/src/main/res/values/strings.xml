@@ -102,4 +102,6 @@
     <string name="navigation_headings">Headings</string>
     <string name="navigation_no_next_heading">No next heading</string>
     <string name="navigation_no_previous_heading">No previous heading</string>
+    <string name="navigation_actions">Actions</string>
+    <string name="navigation_activate">Activate</string>
 </resources>

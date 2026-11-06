@@ -85,4 +85,6 @@
     <string name="navigation_headings">Cabeçalhos</string>
     <string name="navigation_no_next_heading">Não há próximo cabeçalho</string>
     <string name="navigation_no_previous_heading">Não há cabeçalho anterior</string>
+    <string name="navigation_actions">Ações</string>
+    <string name="navigation_activate">Ativar</string>
 </resources>

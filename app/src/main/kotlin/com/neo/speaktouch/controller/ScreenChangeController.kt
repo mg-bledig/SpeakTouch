@@ -33,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.neo.speaktouch.R
 import com.neo.speaktouch.model.Text
+import com.neo.speaktouch.utils.AccessibilityPaneState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ServiceScoped
 import javax.inject.Inject
@@ -45,7 +46,9 @@ class ScreenChangeController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val manualFocus: ManualScrollFocusController? = null
 ) {
-    private data class Destination(val pkg: String, val window: Int, val title: String?)
+    private data class Destination(val pkg: String, val window: Int, val title: String?,
+        val pane: AccessibilityPaneState.Pane? = null)
+    private val panes = AccessibilityPaneState()
     private data class Pending(val destination: Destination?, val app: String?, val title: String?,
         val unlocked: Boolean, val started: Long, val speechGeneration: Long,
         var focus: android.view.accessibility.AccessibilityNodeInfo? = null)
@@ -97,6 +100,7 @@ class ScreenChangeController @Inject constructor(
     private val deliver = Runnable { deliverPending() }
 
     fun start() {
+        panes.clear()
         cancelPageFeedback(); lastPage = null
         manualFocus?.recoveryObserver = ::onRecoveryChanged
         cancelPending()
@@ -115,6 +119,7 @@ class ScreenChangeController @Inject constructor(
         }
     }
     fun destroy() {
+        panes.clear()
         manualFocus?.recoveryObserver = null
         cancelPageFeedback(); lastPage = null
         cancelPending()
@@ -145,10 +150,11 @@ class ScreenChangeController @Inject constructor(
             else -> return
         }
         observeLock()
-        if (!accessible()) return
+        if (!accessible()) { return }
         val sourceWindow = event.source?.window
             ?: service.getOrThrow().windows.firstOrNull { it.id == event.windowId }
-        if (sourceWindow != null && sourceWindow.type != AccessibilityWindowInfo.TYPE_APPLICATION) return
+        if (sourceWindow != null && sourceWindow.type != AccessibilityWindowInfo.TYPE_APPLICATION) { return }
+        val paneChange = panes.observe(event, service.getRoot())
         val destination = activeDestination(event) ?: return
         // Ignore events from IME/overlays/inactive apps; their package is not the destination.
         if (event.packageName != null && event.packageName.toString() != destination.pkg) return
@@ -164,11 +170,13 @@ class ScreenChangeController @Inject constructor(
 
         if (!accessible()) return false
         val destination = activeDestination() ?: run { cancelPending(); return false }
+        if (destination.pane?.contains(node.unwrap()) == false) { cancelPending(); return false }
         if (node.windowId != destination.window || node.packageName?.toString() != destination.pkg) {
             cancelPending(); return false
         }
         if (current?.pkg != destination.pkg) accept(destination, false)
         val update = pending ?: return false
+        if (update.destination?.pane?.generation != destination.pane?.generation) { cancelPending(); return false }
         if (update.destination != null && update.destination.window != node.windowId) {
             cancelPending(); return false
         }
@@ -196,16 +204,16 @@ class ScreenChangeController @Inject constructor(
             ?: root.window ?: return null
         if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION || window.id != root.windowId) return null
         val pkg = root.packageName?.toString()?.takeIf { it.isNotBlank() } ?: return null
-        val pane = if (Build.VERSION.SDK_INT >= 28 && event != null && event.contentChangeTypes and
-            (AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED or AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_TITLE) != 0)
-            event.source?.let(AccessibilityNodeInfoCompat::wrap)?.paneTitle else null
+        val paneState = panes.current(root)
+        val pane = paneState?.title
         val windowTitle = if (Build.VERSION.SDK_INT >= 24) window.title else null
         val eventTitle = if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            event.contentChangeTypes and AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_DISAPPEARED == 0 &&
             (event.windowId < 0 || event.windowId == root.windowId)) event.text.singleOrNull() else null
         val title = sequenceOf(pane, windowTitle, eventTitle).mapNotNull {
             meaningfulTitle(it, pkg, event?.className?.toString(), root.className?.toString())
         }.firstOrNull()
-        return Destination(pkg, root.windowId, title)
+        return Destination(pkg, root.windowId, title, paneState)
     }
     private fun meaningfulTitle(value: CharSequence?, pkg: String, eventClass: String?, rootClass: String?): String? {
         val title = value?.toString()?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -418,7 +426,8 @@ class ScreenChangeController @Inject constructor(
         val label = appLabel(destination.pkg)
         val app = if (changedApp) label else old?.app?.takeIf { old.destination?.pkg == destination.pkg }
         val title = destination.title?.takeIf {
-            !closingDialog && (changedApp || it != previous?.title) && !it.equals(label, true)
+            !closingDialog && (changedApp || it != previous?.title ||
+                destination.pane != null && destination.pane.generation != previous?.pane?.generation) && !it.equals(label, true)
         }
         val unlocked = old?.unlocked == true
         if (app == null && title == null && !unlocked) { cancelPending(); return }
@@ -439,17 +448,19 @@ class ScreenChangeController @Inject constructor(
     private fun deliverPending() {
         val update = pending ?: return
         pending = null
-        if (!accessible() || speech.generation != update.speechGeneration) return
+        if (!accessible() || speech.generation != update.speechGeneration) { return }
         val destination = activeDestination()
         if (update.destination != null && (destination?.pkg != update.destination.pkg ||
-                destination?.window != update.destination.window)) return
+                destination?.window != update.destination.window ||
+                destination?.pane?.generation != update.destination.pane?.generation)) return
         val parts = listOfNotNull(if (update.unlocked) context.getString(R.string.device_unlocked) else null,
             update.app, update.title)
         val focus = update.focus
         if (focus != null) {
             val currentFocus = service.getFocused() ?: return
             if (currentFocus != focus || !currentFocus.refresh() || !currentFocus.isVisibleToUser ||
-                !currentFocus.isAccessibilityFocused || currentFocus.windowId != destination?.window) return
+                !currentFocus.isAccessibilityFocused || currentFocus.windowId != destination?.window ||
+                destination?.pane?.contains(currentFocus) == false) return
             speech.speak(AccessibilityNodeInfoCompat.wrap(currentFocus), parts)
         } else if (parts.isNotEmpty()) speech.speak(Text(parts.joinToString(", ")))
     }

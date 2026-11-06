@@ -220,6 +220,17 @@ class PauseResumeTest {
         }
         assertEquals(3, submitted.size)
     }
+    @Test fun `initial window focus duplicate cancels paused text without repeating speech`() {
+        interceptor.announceInitialWindowFocus(focused)
+        say(); toggle()
+        val before = submitted.size
+        val focusEvent = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+        shadowOf(focusEvent).setSourceNode(focused.unwrap())
+        interceptor.handle(focusEvent)
+        assertEquals(before, submitted.size)
+        toggle()
+        assertEquals(before, submitted.size)
+    }
     @Test fun `window state and active window changes cancel paused text`() {
         say(); toggle(); event(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED); toggle()
         say(); toggle()

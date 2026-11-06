@@ -1,0 +1,31 @@
+BackTalk/TalkBack gesture recognition (Apache License 2.0)
+
+Source: https://github.com/trypsynth/backtalk
+Source revision: 8ac946089b0a49cd4ce485db01a5a9ea05d4681e
+Files: source-derived recognizers/monitor in app/src/main/java/com/neo/speaktouch/gestures/
+and gesture_config.xml resources. GestureLog.java is an original SpeakTouch GPLv3 helper.
+Original AOSP/Google per-file notices are retained. TouchInteractionMonitor.java and
+GestureUtils.java have no individual notice in the source checkout; the repository
+is distributed under Apache-2.0. No replacement copyright holder is asserted.
+
+Modified for SpeakTouch, 2026: package/resources, isolated callback/driver interface,
+removal of telemetry and optional BackTalk-only rotor/menu/typing features, lifecycle cleanup.
+The two-finger passthrough branch is from the parent of BackTalk commit 6cd981b9,
+before the unrelated rotor. Other recognizer source uses the revision above.
+
+SpeakTouch remains GPLv3. Apache-2.0 terms for the included source remain applicable.
+The full Apache licence is in app/src/main/assets/licenses/Apache-2.0.txt.
+
+GestureAnalyticsEvent.java: Copyright (C) 2024 Google Open Source Project
+GestureConfiguration.java: Copyright (C) 2023 The Android Open Source Project
+GestureLog.java: Copyright (C) 2026 Michael G Bledig. SPDX-License-Identifier: GPL-3.0-only
+GestureManifold.java: Copyright (C) 2021s The Android Open Source Project
+GestureMatcher.java: Copyright (C) 2021 The Android Open Source Project
+GestureMatcherFactory.java: Copyright (C) 2022 The Android Open Source Project
+MultiFingerMultiTap.java: Copyright (C) 2020 The Android Open Source Project
+MultiFingerMultiTapAndHold.java: Copyright (C) 2020 The Android Open Source Project
+MultiFingerSwipe.java: Copyright (C) 2020 The Android Open Source Project
+MultiTap.java: Copyright (C) 2019 The Android Open Source Project
+MultiTapAndHold.java: Copyright (C) 2019 The Android Open Source Project
+SecondFingerTap.java: Copyright (C) 2022 The Android Open Source Project
+Swipe.java: Copyright (C) 2021 The Android Open Source Project

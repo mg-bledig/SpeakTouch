@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BackTalk tablet swipe slop, Apache-2.0; see THIRD_PARTY_NOTICES. -->
+<resources><integer name="config_slop_default_multiplier">3</integer></resources>

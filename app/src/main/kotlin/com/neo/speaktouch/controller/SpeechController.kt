@@ -46,11 +46,11 @@ class SpeechController(
 
     init {
         textToSpeech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) = finish(utteranceId)
-            override fun onError(utteranceId: String?) = finish(utteranceId)
-            override fun onError(utteranceId: String?, errorCode: Int) = finish(utteranceId)
-            override fun onStop(utteranceId: String?, interrupted: Boolean) = finish(utteranceId)
+            override fun onStart(utteranceId: String?) { }
+            override fun onDone(utteranceId: String?) { finish(utteranceId) }
+            override fun onError(utteranceId: String?) { finish(utteranceId) }
+            override fun onError(utteranceId: String?, errorCode: Int) { finish(utteranceId) }
+            override fun onStop(utteranceId: String?, interrupted: Boolean) { finish(utteranceId) }
         })
     }
 
@@ -78,7 +78,8 @@ class SpeechController(
         }
         val current = Playing(saved, "speaktouch-${++sequence}")
         playing = current
-        if (textToSpeech.speak(saved, TextToSpeech.QUEUE_FLUSH, null, current.id) != TextToSpeech.SUCCESS &&
+        val result = textToSpeech.speak(saved, TextToSpeech.QUEUE_FLUSH, null, current.id)
+        if (result != TextToSpeech.SUCCESS &&
             playing === current) clearState()
     }
 

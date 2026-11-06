@@ -47,6 +47,17 @@ class GestureInterceptor @Inject constructor(
     private val granularity: NavigationGranularityController? = null
 ) {
 
+    fun onGestureDetectionStarted() { speechController.onGestureDetectionStart() }
+
+    fun activateContextualAction(): Boolean {
+        val handled = granularity?.activateAction() == true
+        if (handled) {
+            speechController.cancelResume()
+            boundaryFeedback?.cancel()
+        }
+        return handled
+    }
+
     fun handle(gestureId: Int): Boolean {
         granularity?.cancelPending()
         if (gestureId != AccessibilityService.GESTURE_SWIPE_LEFT &&

@@ -32,6 +32,8 @@ import com.neo.speaktouch.controller.ContextMenuController
 import com.neo.speaktouch.controller.Controllers
 import com.neo.speaktouch.controller.FocusController
 import com.neo.speaktouch.controller.VolumeController
+import com.neo.speaktouch.controller.WindowFocusController
+import com.neo.speaktouch.gestures.TouchGestureController
 import com.neo.speaktouch.intercepter.Interceptors
 import com.neo.speaktouch.intercepter.event.contract.EventInterceptor
 import com.neo.speaktouch.utils.extension.addFlags
@@ -55,6 +57,8 @@ class SpeakTouchService : AccessibilityService () {
     @Inject lateinit var screenCurtainController: ScreenCurtainController
 
     @Inject lateinit var contextMenuController: ContextMenuController
+    @Inject lateinit var touchGestures: TouchGestureController
+    @Inject lateinit var windowFocus: WindowFocusController
 
     override fun onCreate() {
         super.onCreate()
@@ -73,6 +77,7 @@ class SpeakTouchService : AccessibilityService () {
         if (::interceptors.isInitialized) interceptors.manualScrollFocus.start()
         if (::screenCurtainController.isInitialized) screenCurtainController.start()
         if (::screenChangeController.isInitialized) screenChangeController.start()
+        if (::windowFocus.isInitialized) windowFocus.start()
 
         addFlags(AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS)
 
@@ -86,17 +91,21 @@ class SpeakTouchService : AccessibilityService () {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             addFlags(AccessibilityServiceInfo.FLAG_REQUEST_2_FINGER_PASSTHROUGH)
         }
+        if (::touchGestures.isInitialized && ::interceptors.isInitialized) {
+            interceptors.actionNavigation.setActivationAvailable(touchGestures.start(
+                onGesture = { onGesture(it) },
+                onDoubleTap = { interceptors.gesture.activateContextualAction() },
+                onGestureStarted = { interceptors.gesture.onGestureDetectionStarted() }
+            ))
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         screenChangeController.observe(event)
         screenCurtainController.onEvent(event)
         contextMenuController.onEvent(event)
-        when (event.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                if (contextMenuController.shouldInitializeFocus(event)) focusController.moveFocusToFirst()
-            }
-        }
+        if (::windowFocus.isInitialized) windowFocus.onEvent(event, !contextMenuController.isOpen &&
+            (!WindowFocusController.isWindowTransition(event) || contextMenuController.shouldInitializeFocus(event)))
 
         interceptors.event.forEach {
             it.handle(event)
@@ -104,6 +113,8 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onDestroy() {
+        if (::windowFocus.isInitialized) windowFocus.finish()
+        if (::touchGestures.isInitialized) touchGestures.finish()
         if (::screenChangeController.isInitialized) screenChangeController.destroy()
         screenCurtainController.destroy()
         contextMenuController.destroy()
@@ -115,6 +126,9 @@ class SpeakTouchService : AccessibilityService () {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        if (::windowFocus.isInitialized) windowFocus.finish()
+        if (::touchGestures.isInitialized) touchGestures.finish()
+        if (::interceptors.isInitialized) interceptors.actionNavigation.finish()
         if (::interceptors.isInitialized) interceptors.navigationSound.finish()
         if (::interceptors.isInitialized) interceptors.granularity.finish()
         if (::interceptors.isInitialized) interceptors.speech.clearEditing()
@@ -131,6 +145,7 @@ class SpeakTouchService : AccessibilityService () {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (::screenCurtainController.isInitialized) screenCurtainController.onConfigurationChanged()
+        if (::touchGestures.isInitialized) touchGestures.configurationChanged()
     }
 
     override fun onInterrupt() = Unit

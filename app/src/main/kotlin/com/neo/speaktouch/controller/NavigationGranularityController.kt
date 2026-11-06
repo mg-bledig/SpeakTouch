@@ -40,14 +40,16 @@ class NavigationGranularityController @Inject constructor(
     private val service: ServiceController,
     private val speech: SpeechController,
     private val callbacks: CallbackInterceptor,
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    private val actionNavigation: ActionNavigationController? = null
 ) : EventInterceptor {
     enum class Mode(val mask: Int, val label: Int) {
         DEFAULT(0, R.string.navigation_default),
         CHARACTERS(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER, R.string.navigation_characters),
         WORDS(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD, R.string.navigation_words),
         LINES(AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE, R.string.navigation_lines),
-        HEADINGS(0, R.string.navigation_headings)
+        HEADINGS(0, R.string.navigation_headings),
+        ACTIONS(0, R.string.navigation_actions)
     }
     // A provider rejection is not proof that the entire window is exhausted.
     enum class Result { DEFAULT, ACCEPTED, NO_MOVEMENT, UNAVAILABLE, HEADING_BOUNDARY }
@@ -131,6 +133,7 @@ class NavigationGranularityController @Inject constructor(
             Mode.entries.filter { mode ->
                 when (mode) {
                     Mode.DEFAULT -> true
+                    Mode.ACTIONS -> scope != null && actionNavigation?.available() == true
                     Mode.HEADINGS -> scope != null &&
                         Type.get(AccessibilityNodeInfoCompat.wrap(scope.anchor)) != Type.Slider &&
                         webNavigation.valid(scope.anchor, scope.root)
@@ -142,9 +145,12 @@ class NavigationGranularityController @Inject constructor(
 
     fun effectiveMode(): Mode = selectedMode.takeIf { it in availableModes() } ?: Mode.DEFAULT
 
+    fun activateAction(): Boolean = selectedMode == Mode.ACTIONS && actionNavigation?.activate() == true
+
     fun cycle(forward: Boolean) {
         if (finished) return
         cancelPending()
+        actionNavigation?.reset()
         val modes = availableModes()
         val index = modes.indexOf(selectedMode)
         val next = if (index < 0) { if (forward) 0 else modes.lastIndex }
@@ -192,6 +198,9 @@ class NavigationGranularityController @Inject constructor(
         if (selectedMode == Mode.DEFAULT) return Result.DEFAULT
         return try {
             val scope = scope() ?: return Result.UNAVAILABLE
+            if (selectedMode == Mode.ACTIONS) {
+                return if (actionNavigation?.move(forward) == true) Result.ACCEPTED else Result.DEFAULT
+            }
             if (selectedMode == Mode.HEADINGS) {
                 if (Type.get(AccessibilityNodeInfoCompat.wrap(scope.anchor)) == Type.Slider ||
                     webNavigation.container(scope.anchor) == null) return Result.DEFAULT

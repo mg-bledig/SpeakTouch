@@ -217,6 +217,68 @@ class ScreenChangeTest {
         scene(); transition(); advance(); transition(); advance()
         assertEquals(listOf("Alpha, Home"), spoken())
     }
+    @Test fun `same window pane title survives later ordinary metadata and is composed once`() {
+        scene(); transition(); advance()
+        root.paneTitle = "Short cuts"
+        changes.observe(event(title = "Short cuts").apply {
+            contentChangeTypes = AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED
+        })
+        changes.observe(event(title = null))
+        focus(); advance()
+        assertEquals(listOf("Alpha, Home", "Short cuts, Open, button"), spoken())
+        changes.observe(event(title = null)); advance()
+        assertEquals(2, spoken().size)
+    }
+    @Test fun `pane without a new focus event still announces its title once`() {
+        scene(); transition(); advance(); root.paneTitle = "Short cuts"
+        val appeared = event(title = "Short cuts").apply {
+            contentChangeTypes = AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED
+        }
+        changes.observe(appeared)
+        changes.observe(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED).apply {
+            packageName = root.packageName; shadowOf(this).setWindowId(root.windowId)
+        })
+        advance(); changes.observe(appeared); advance()
+        assertEquals(listOf("Alpha, Home", "Short cuts"), spoken())
+    }
+    @Test fun `source free pane disappearance restores window context and discards pending pane`() {
+        scene(); transition(); advance(); root.paneTitle = "Short cuts"
+        changes.observe(event(title = "Short cuts").apply {
+            contentChangeTypes = AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED
+        })
+        root.paneTitle = null
+        changes.observe(AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED).apply {
+            packageName = root.packageName; shadowOf(this).setWindowId(root.windowId)
+            contentChangeTypes = AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_DISAPPEARED
+            text.add("Short cuts")
+        })
+        advance()
+        val expected = if (Build.VERSION.SDK_INT >= 24) listOf("Alpha, Home", "Home") else listOf("Alpha, Home")
+        assertEquals(expected, spoken())
+        changes.observe(event(title = null)); advance()
+        assertEquals(expected, spoken())
+    }
+    @Test fun `removed pane cannot deliver stale context even without disappearance event`() {
+        scene(); transition(); advance(); root.paneTitle = "Short cuts"
+        changes.observe(event(title = "Short cuts").apply {
+            contentChangeTypes = AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED
+        })
+        nodeShadow(root).setRefreshReturnValue(false)
+        advance()
+        assertEquals(listOf("Alpha, Home"), spoken())
+    }
+    @Test fun `pane title update replaces pending old title`() {
+        scene(); transition(); advance(); root.paneTitle = "First pane"
+        changes.observe(event(title = "First pane").apply {
+            contentChangeTypes = AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED
+        })
+        root.paneTitle = "Updated pane"
+        changes.observe(event(title = "Updated pane").apply {
+            contentChangeTypes = AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_TITLE
+        })
+        focus(); advance()
+        assertEquals(listOf("Alpha, Home", "Updated pane, Open, button"), spoken())
+    }
     @Test fun `repeated same app screen and whitespace equivalent title remain silent`() {
         scene(); transition(); focus(); advance()
         scene(title = "  Home  "); transition("  Home  "); advance()
